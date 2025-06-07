@@ -1,0 +1,60 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+
+# Virtual environments
+venv/
+env/
+ENV/
+.venv/
+
+# Environment variables and secrets
+.env
+*.env
+
+# Log files
+*.log
+
+# Database files (if using SQLite for testing)
+*.sqlite3
+*.db
+
+# OS-specific
+.DS_Store
+Thumbs.db
+
+# IDEs and Editors
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Pytest
+.pytest_cache/
+.cache/
+
+# Mypy
+.mypy_cache/
+
+# Coverage reports
+htmlcov/
+coverage.xml
+*.cover
+.coverage
+.tox/
+nosetests.xml
+
+# Build artifacts
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# Pydantic cache (if using)
+__pydantic__/ 
+
+# Misc
+*.bak
