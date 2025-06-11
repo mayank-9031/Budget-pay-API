@@ -3,10 +3,10 @@ from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.orm import sessionmaker, declarative_base
 from .config import settings
 
-# Create the async engine - Use the new method from config
+# Create the async engine
 engine = create_async_engine(
-    settings.get_database_url,  # Changed from settings.DATABASE_URL
-    echo=False,                # set to True for SQL echo
+    settings.DATABASE_URL,  # Direct use since we have the right format
+    echo=False,
     future=True,
 )
 
