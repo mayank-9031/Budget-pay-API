@@ -34,9 +34,10 @@ app = FastAPI(
 
 # CORS Configuration
 origins = [
-    settings.FRONTEND_URL,
-    "http://localhost:3000",            
-    "http://localhost:3001",        
+    settings.FRONTEND_URL,  # Your deployed frontend
+    "http://localhost:3000",  # Local development
+    "http://localhost:3001",  # Backup local port
+    "https://v0-budget-pay-ui-design.vercel.app",  # Your current deployed frontend
 ]
 
 app.add_middleware(
