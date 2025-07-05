@@ -1,24 +1,57 @@
 # app/core/config.py
+
 import os
 from pathlib import Path
-from pydantic_settings import BaseSettings
+from typing import Union
+from pydantic import EmailStr, field_validator
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
-BASE_DIR = Path(__file__).resolve().parent.parent
+# Get the project root directory (where .env should be located)
+BASE_DIR = Path(__file__).resolve().parent.parent.parent
 
 class Settings(BaseSettings):
-    # Database
-    DATABASE_URL: str = os.getenv("DATABASE_URL", "postgresql+asyncpg://postgres:postgres@localhost:5432/postgres")
+    model_config = SettingsConfigDict(
+        env_file=str(BASE_DIR / ".env"),
+        env_file_encoding='utf-8',
+        case_sensitive=True,
+        extra="ignore"
+    )
     
-    # JWT / Security
-    SECRET_KEY: str = os.getenv("SECRET_KEY", "oI0oND9kSXtTMzCriYZ8UVp7XoDLQwH74HsBiLRtgQ8")
-    ALGORITHM: str = os.getenv("ALGORITHM", "HS256")
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "10080"))
+    # App Configuration
+    APP_NAME: str = "Budget Pay API"
+    DEBUG: bool = False
+    VERSION: str = "1.0.0"
     
-    # CORS
-    FRONTEND_URL: str = os.getenv("FRONTEND_URL", "http://localhost:3000")
+    # Database Configuration
+    DATABASE_URL: str
+    
+    # JWT / Security Configuration
+    SECRET_KEY: str
+    ALGORITHM: str = "HS256"
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 10080
+    
+    # CORS Configuration
+    FRONTEND_URL: str
+    
+    # SendGrid Configuration
+    SENDGRID_API_KEY: str
+    EMAIL_FROM: EmailStr
+    EMAIL_FROM_NAME: str = "Budget Pay Team"
+    
+    # Backend Configuration
+    BACKEND_BASE_URL: str
+    
+    # Optional: Environment
+    ENVIRONMENT: str = "development"
+    
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        # Debug print to verify settings are loaded
+        print(f"🔧 Settings loaded:")
+        print(f"   - EMAIL_FROM: {self.EMAIL_FROM}")
+        print(f"   - SENDGRID_API_KEY: {self.SENDGRID_API_KEY[:10]}...")
+        print(f"   - FRONTEND_URL: {self.FRONTEND_URL}")
+        print(f"   - BACKEND_BASE_URL: {self.BACKEND_BASE_URL}")
 
-    class Config:
-        env_file = BASE_DIR / ".env"
-        case_sensitive = True
-
+# Create a global settings instance
 settings = Settings()
