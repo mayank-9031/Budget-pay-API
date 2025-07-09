@@ -12,7 +12,7 @@ from app.core.auth import current_active_user, get_user_manager, User
 from app.core.database import get_async_session
 from app.core.auth import UserRead, UserUpdate  # your Pydantic schemas
 
-router = APIRouter(prefix="/users", tags=["User Management"])
+router = APIRouter(tags=["User Management"])
 
 # 1) GET /users/me
 @router.get("/me", response_model=UserRead)
@@ -97,7 +97,7 @@ async def delete_own_profile(
         )
 
 # 4) List users with pagination and security
-@router.get("/list", response_model=List[UserRead])
+@router.get("/list-all", response_model=List[UserRead])
 async def list_users(
     skip: int = 0,
     limit: int = 100,

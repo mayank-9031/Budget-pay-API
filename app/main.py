@@ -20,8 +20,8 @@ from app.api.v1.routes import (
     categories,
     expenses,
     transactions,
-    goals,
     dashboard,
+    chatbot,
 )
 
 logging.basicConfig(level=logging.INFO)
@@ -176,12 +176,12 @@ async def health_check():
 # ------------------------------------------------------------
 # BUSINESS LOGIC ROUTES
 # ------------------------------------------------------------
-app.include_router(users.router, prefix="/api/v1")
+app.include_router(users.router, prefix="/api/v1/users", tags=["User Management"])
 app.include_router(categories.router, prefix="/api/v1")
 app.include_router(expenses.router, prefix="/api/v1")
 app.include_router(transactions.router, prefix="/api/v1")
-app.include_router(goals.router, prefix="/api/v1")
 app.include_router(dashboard.router, prefix="/api/v1")
+app.include_router(chatbot.router, prefix="/api/v1/chatbot", tags=["Chatbot"])
 
 # ------------------------------------------------------------
 # STARTUP EVENT

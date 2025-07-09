@@ -50,7 +50,7 @@ class User(Base):
     savings_goal_amount = Column(String, nullable=True)
     savings_goal_deadline = Column(DateTime, nullable=True)
 
-    # Add relationships for categories, expenses, transactions, goals
+    # Add relationships for categories, expenses, transactions
     categories = relationship(
         "Category",
         back_populates="user",
@@ -64,11 +64,6 @@ class User(Base):
     transactions = relationship(
         "Transaction",
         back_populates="user", 
-        cascade="all, delete-orphan",
-    )
-    goals = relationship(
-        "Goal",
-        back_populates="user",
         cascade="all, delete-orphan",
     )
 

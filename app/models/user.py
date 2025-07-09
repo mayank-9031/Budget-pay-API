@@ -8,6 +8,5 @@ if TYPE_CHECKING:
     from .category import Category
     from .expense import Expense
     from .transaction import Transaction
-    from .goal import Goal
 
 # (All additional fields handled in core/auth.py)

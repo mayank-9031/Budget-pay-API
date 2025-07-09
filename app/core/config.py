@@ -41,17 +41,16 @@ class Settings(BaseSettings):
     # Backend Configuration
     BACKEND_BASE_URL: str
     
+    # AI Chatbot Configuration
+    GROQ_API_KEY: str
+    OPENROUTER_API_KEY: str = ""  # New: OpenRouter API key
+    
     # Optional: Environment
     ENVIRONMENT: str = "development"
     
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         # Debug print to verify settings are loaded
-        print(f"🔧 Settings loaded:")
-        print(f"   - EMAIL_FROM: {self.EMAIL_FROM}")
-        print(f"   - SENDGRID_API_KEY: {self.SENDGRID_API_KEY[:10]}...")
-        print(f"   - FRONTEND_URL: {self.FRONTEND_URL}")
-        print(f"   - BACKEND_BASE_URL: {self.BACKEND_BASE_URL}")
 
 # Create a global settings instance
 settings = Settings()
