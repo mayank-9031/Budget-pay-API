@@ -45,6 +45,11 @@ class Settings(BaseSettings):
     GROQ_API_KEY: str
     OPENROUTER_API_KEY: str = ""  # New: OpenRouter API key
     
+    # Google OAuth Configuration
+    GOOGLE_CLIENT_ID: str = ""
+    GOOGLE_CLIENT_SECRET: str = ""
+    GOOGLE_REDIRECT_URI: str = ""
+    
     # Optional: Environment
     ENVIRONMENT: str = "development"
     

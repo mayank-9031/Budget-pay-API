@@ -2,7 +2,7 @@
 
 import uuid
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Optional
 
 from fastapi import Depends, Request
@@ -25,6 +25,7 @@ from sendgrid.helpers.mail import Mail
 
 import asyncio
 from concurrent.futures import ThreadPoolExecutor
+import jwt
 
 from .database import Base, get_async_session
 from .config import settings
@@ -49,6 +50,12 @@ class User(Base):
     monthly_income = Column(String, nullable=True)
     savings_goal_amount = Column(String, nullable=True)
     savings_goal_deadline = Column(DateTime, nullable=True)
+    
+    # Google OAuth fields
+    google_id = Column(String, unique=True, nullable=True)
+    google_access_token = Column(String, nullable=True)
+    google_refresh_token = Column(String, nullable=True)
+    google_token_expiry = Column(DateTime, nullable=True)
 
     # Add relationships for categories, expenses, transactions
     categories = relationship(
@@ -66,6 +73,33 @@ class User(Base):
         back_populates="user", 
         cascade="all, delete-orphan",
     )
+
+# Helper function to create JWT tokens
+def create_access_token(subject: str, expires_delta: Optional[timedelta] = None) -> str:
+    """
+    Create a JWT access token for the given subject (user ID)
+    """
+    if expires_delta:
+        expire = datetime.utcnow() + expires_delta
+    else:
+        expire = datetime.utcnow() + timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
+    
+    payload = {
+        "sub": subject,
+        "exp": expire,
+        "iat": datetime.utcnow(),
+    }
+    
+    # Convert SecretStr to str if needed
+    secret_key = str(settings.SECRET_KEY) if hasattr(settings.SECRET_KEY, "get_secret_value") else settings.SECRET_KEY
+    
+    encoded_jwt = jwt.encode(
+        payload, 
+        secret_key, 
+        algorithm=settings.ALGORITHM
+    )
+    
+    return encoded_jwt
 
 # 2. Pydantic schemas
 class UserRead(schemas.BaseUser[uuid.UUID]):
@@ -400,7 +434,14 @@ async def get_user_manager(user_db: SQLAlchemyUserDatabase = Depends(get_user_db
 bearer_transport = BearerTransport(tokenUrl="/api/v1/auth/jwt/login")
 
 def get_jwt_strategy() -> JWTStrategy:
-    return JWTStrategy(secret=settings.SECRET_KEY, lifetime_seconds=3600)
+    # Convert SecretStr to str if needed
+    secret_key = str(settings.SECRET_KEY) if hasattr(settings.SECRET_KEY, "get_secret_value") else settings.SECRET_KEY
+    
+    # Use the ACCESS_TOKEN_EXPIRE_MINUTES from settings (10080 minutes = 7 days)
+    return JWTStrategy(
+        secret=secret_key, 
+        lifetime_seconds=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60
+    )
 
 auth_backend = AuthenticationBackend(
     name="jwt",

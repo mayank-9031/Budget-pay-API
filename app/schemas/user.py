@@ -26,3 +26,26 @@ class UserUpdate(BaseModel):
 
     class Config:
         orm_mode = True
+
+class GoogleAuthRequest(BaseModel):
+    redirect_uri: Optional[str] = None
+
+class GoogleAuthResponse(BaseModel):
+    authorization_url: str
+
+class GoogleCallbackRequest(BaseModel):
+    code: str
+    state: Optional[str] = None
+    error: Optional[str] = None
+
+class Token(BaseModel):
+    access_token: str
+    token_type: str
+    expires_in: int
+    refresh_token: Optional[str] = None
+
+class UserProfile(BaseModel):
+    email: EmailStr
+    full_name: Optional[str] = None
+    is_active: bool = True
+    is_verified: bool = True

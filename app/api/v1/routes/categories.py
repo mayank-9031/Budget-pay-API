@@ -1,5 +1,5 @@
 # app/api/v1/routes/categories.py
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import List
 import uuid
@@ -13,33 +13,43 @@ from app.crud.category import (
     delete_category,
 )
 from app.core.database import get_async_session
-from app.core.auth import current_active_user, User
+from app.core.auth import User
+from app.api.deps import get_current_user
 
 router = APIRouter(prefix="/categories", tags=["categories"])
 
 @router.get("", response_model=List[CategoryRead])
 async def read_categories(
+    request: Request,
     db: AsyncSession = Depends(get_async_session),
-    user: User = Depends(current_active_user),
+    user: User = Depends(get_current_user),
 ):
-    categories = await get_categories_for_user(user.id, db)
+    # Convert user.id to UUID
+    user_id = uuid.UUID(str(user.id))
+    categories = await get_categories_for_user(user_id, db)
     return categories
 
 @router.post("", response_model=CategoryRead, status_code=status.HTTP_201_CREATED)
 async def create_category(
     cat_in: CategoryCreate,
+    request: Request,
     db: AsyncSession = Depends(get_async_session),
-    user: User = Depends(current_active_user),
+    user: User = Depends(get_current_user),
 ):
-    return await create_category_for_user(user.id, cat_in, db)
+    # Convert user.id to UUID
+    user_id = uuid.UUID(str(user.id))
+    return await create_category_for_user(user_id, cat_in, db)
 
 @router.get("/{category_id}", response_model=CategoryRead)
 async def read_category(
     category_id: uuid.UUID,
+    request: Request,
     db: AsyncSession = Depends(get_async_session),
-    user: User = Depends(current_active_user),
+    user: User = Depends(get_current_user),
 ):
-    category = await get_category_by_id(category_id, user.id, db)
+    # Convert user.id to UUID
+    user_id = uuid.UUID(str(user.id))
+    category = await get_category_by_id(category_id, user_id, db)
     if not category:
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Category not found")
     return category
@@ -48,10 +58,13 @@ async def read_category(
 async def update_category_endpoint(
     category_id: uuid.UUID,
     cat_in: CategoryUpdate,
+    request: Request,
     db: AsyncSession = Depends(get_async_session),
-    user: User = Depends(current_active_user),
+    user: User = Depends(get_current_user),
 ):
-    category = await get_category_by_id(category_id, user.id, db)
+    # Convert user.id to UUID
+    user_id = uuid.UUID(str(user.id))
+    category = await get_category_by_id(category_id, user_id, db)
     if not category:
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Category not found")
     return await update_category(category, cat_in, db)
@@ -59,10 +72,13 @@ async def update_category_endpoint(
 @router.delete("/{category_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_category_endpoint(
     category_id: uuid.UUID,
+    request: Request,
     db: AsyncSession = Depends(get_async_session),
-    user: User = Depends(current_active_user),
+    user: User = Depends(get_current_user),
 ):
-    category = await get_category_by_id(category_id, user.id, db)
+    # Convert user.id to UUID
+    user_id = uuid.UUID(str(user.id))
+    category = await get_category_by_id(category_id, user_id, db)
     if not category:
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Category not found")
     await delete_category(category, db)
