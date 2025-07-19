@@ -2,24 +2,16 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
-from typing import List, Dict, Any, Optional
+from typing import Dict, Any
 import uuid
 from datetime import datetime, timedelta
 from enum import Enum
 
-from app.schemas.expense import ExpenseCreate, ExpenseRead, ExpenseUpdate
-from app.crud.expense import (
-    create_expense_for_user,
-    get_expenses_for_user,
-    get_expense_by_id,
-    update_expense,
-    delete_expense,
-)
-from app.core.database import get_async_session
-from app.core.auth import current_active_user, User
 from app.models.category import Category
 from app.models.transaction import Transaction
 from app.api.deps import get_current_user
+from app.core.database import get_async_session
+from app.core.auth import User
 
 router = APIRouter(prefix="/expenses", tags=["expenses"])
 
@@ -29,55 +21,13 @@ class TimePeriod(str, Enum):
     monthly = "monthly"
     yearly = "yearly"
 
-@router.get("", response_model=List[ExpenseRead])
-async def read_expenses(
-    db: AsyncSession = Depends(get_async_session),
-    user: User = Depends(current_active_user),
-):
-    return await get_expenses_for_user(user.id, db)
-
-@router.post("", response_model=ExpenseRead, status_code=status.HTTP_201_CREATED)
-async def create_expense(
-    ex_in: ExpenseCreate,
-    db: AsyncSession = Depends(get_async_session),
-    user: User = Depends(current_active_user),
-):
-    return await create_expense_for_user(user.id, ex_in, db)
-
-@router.get("/{expense_id}", response_model=ExpenseRead)
-async def read_expense(
-    expense_id: uuid.UUID,
-    db: AsyncSession = Depends(get_async_session),
-    user: User = Depends(current_active_user),
-):
-    ex = await get_expense_by_id(expense_id, user.id, db)
-    if not ex:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Expense not found")
-    return ex
-
-@router.patch("/{expense_id}", response_model=ExpenseRead)
-async def update_expense_endpoint(
-    expense_id: uuid.UUID,
-    ex_in: ExpenseUpdate,
-    db: AsyncSession = Depends(get_async_session),
-    user: User = Depends(current_active_user),
-):
-    ex = await get_expense_by_id(expense_id, user.id, db)
-    if not ex:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Expense not found")
-    return await update_expense(ex, ex_in, db)
-
-@router.delete("/{expense_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_expense_endpoint(
-    expense_id: uuid.UUID,
-    db: AsyncSession = Depends(get_async_session),
-    user: User = Depends(current_active_user),
-):
-    ex = await get_expense_by_id(expense_id, user.id, db)
-    if not ex:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Expense not found")
-    await delete_expense(ex, db)
-    return None
+def safe_float(val, default=0.0):
+    try:
+        if val is None:
+            return default
+        return float(val)
+    except Exception:
+        return default
 
 @router.get("/overview/budget", response_model=Dict[str, Any])
 async def get_expense_overview(
@@ -90,8 +40,10 @@ async def get_expense_overview(
     Returns data for the top cards and category-wise breakdown.
     """
     # Get user's monthly income and savings goal
-    monthly_income = float(user.monthly_income) if user.monthly_income else 0
-    savings_goal = float(user.savings_goal_amount) if user.savings_goal_amount else 0
+    monthly_income_val = getattr(user, 'monthly_income', None)
+    savings_goal_val = getattr(user, 'savings_goal_amount', None)
+    monthly_income = float(monthly_income_val) if monthly_income_val and isinstance(monthly_income_val, str) and monthly_income_val.strip() else 0
+    savings_goal = float(savings_goal_val) if savings_goal_val and isinstance(savings_goal_val, str) and savings_goal_val.strip() else 0
     
     # Calculate time period multiplier and date range
     now = datetime.now()
@@ -150,12 +102,12 @@ async def get_expense_overview(
     
     for category in categories:
         # Calculate allocated amount for this category based on percentage
-        percentage = category.custom_percentage if category.custom_percentage is not None else category.default_percentage
-        category_allocated = allocated_budget * (percentage / 100)
+        percentage = safe_float(category.custom_percentage) if category.custom_percentage is not None else safe_float(category.default_percentage)
+        category_allocated = safe_float(allocated_budget) * (percentage / 100)
         
         # Calculate spent amount for this category
         category_spent = sum(
-            transaction.amount for transaction in transactions 
+            safe_float(transaction.amount) for transaction in transactions 
             if transaction.category_id == category.id
         )
         
@@ -170,7 +122,7 @@ async def get_expense_overview(
             status = "Near Limit"
         
         # Calculate progress percentage (capped at 100%)
-        progress_percentage = min(100, (category_spent / category_allocated * 100) if category_allocated > 0 else 0)
+        progress_percentage = min(100.0, (category_spent / category_allocated * 100.0) if category_allocated > 0 else 0.0)
         
         category_data.append({
             "id": str(category.id),
@@ -186,9 +138,9 @@ async def get_expense_overview(
         "summary": {
             "time_period": time_period,
             "period_label": period_label,
-            "allocated": round(allocated_budget, 2),
-            "spent": round(total_spent, 2),
-            "remaining": round(remaining_budget, 2)
+            "allocated": round(safe_float(allocated_budget), 2),
+            "spent": round(safe_float(total_spent), 2),
+            "remaining": round(safe_float(remaining_budget), 2)
         },
         "categories": category_data
     }

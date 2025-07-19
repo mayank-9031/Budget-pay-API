@@ -104,7 +104,10 @@ async def get_dashboard_summary(
             spent_per_category[tx.category_id] += tx.amount
 
     for category in categories:
-        percentage = category.custom_percentage if category.custom_percentage is not None else category.default_percentage
+        if category.custom_percentage is not None:
+            percentage = category.custom_percentage
+        else:
+            percentage = category.default_percentage
         category_allocated = allocated_budget * (percentage / 100)
         category_allocation[category.id] = category_allocated
 

@@ -40,46 +40,7 @@ app = FastAPI(
     title="Budget Pay API",
     version="1.1.0",
     description="""
-    Budget Management API with Google OAuth support.
     
-    ## Authentication
-    
-    This API supports two authentication methods:
-    
-    1. **Username/Password**: Use the `/api/v1/auth/jwt/login` endpoint with your email and password
-    
-    2. **Google OAuth**: Use the Google OAuth flow starting with `/api/v1/auth/google/login`
-    
-    ### Using Bearer Token in Swagger UI
-    
-    To use protected endpoints in Swagger UI:
-    
-    1. Click the "Authorize" button at the top right
-    2. In the "BearerAuth" section, enter your token WITHOUT the "Bearer " prefix
-    3. Click "Authorize" and close the dialog
-    4. Now you can use protected endpoints
-    
-    ### Testing Authentication
-    
-    You can test authentication with these endpoints:
-    
-    - `/api/v1/auth/google/generate-test-token/{user_id}`: Generate a test token
-    - `/api/v1/auth/google/manual-verify`: Verify token from header, query param, or cookie
-    - `/api/v1/auth/google/verify-token`: Verify token from Authorization header
-    - `/api/v1/auth/google/simple-verify`: Simple verification endpoint
-    - `/api/v1/auth/google/debug-auth`: Debug authentication information
-    
-    ### Comprehensive Token Testing Tool
-    
-    For a complete token testing experience, visit:
-    
-    - `/api/v1/auth/google/token-test`: Interactive token testing and debugging tool
-    
-    This tool allows you to:
-    - Analyze JWT tokens
-    - Test different authentication endpoints
-    - Troubleshoot common authentication issues
-    - Generate code snippets for API calls
     """,
     openapi_url="/openapi.json",
     openapi_tags=[
