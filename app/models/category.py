@@ -24,6 +24,7 @@ class Category(Base):
     user = relationship("User", back_populates="categories", lazy="joined")   # see user.py
     expenses = relationship("Expense", back_populates="category", cascade="all, delete")
     transactions = relationship("Transaction", back_populates="category", cascade="all, delete")
+    notifications = relationship("Notification", back_populates="category")
 
     def __repr__(self):
         return f"<Category name={self.name} user_id={self.user_id}>"

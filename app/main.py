@@ -25,6 +25,8 @@ from app.api.v1.routes import (
     chatbot,
     google_auth,
     auth,
+    notification,
+    goals,
 )
 from fastapi.openapi.utils import get_openapi
 
@@ -249,6 +251,8 @@ app.include_router(expenses.router, prefix="/api/v1")
 app.include_router(transactions.router, prefix="/api/v1")
 app.include_router(dashboard.router, prefix="/api/v1")
 app.include_router(chatbot.router, prefix="/api/v1/chatbot", tags=["Chatbot"])
+app.include_router(notification.router, prefix="/api/v1/notification", tags=["notification"])
+app.include_router(goals.router, prefix="/api/v1/goals", tags=["goals"])
 
 # ------------------------------------------------------------
 # STARTUP EVENT

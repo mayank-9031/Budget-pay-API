@@ -1,27 +1,16 @@
 # app/schemas/goal.py
-from typing import Optional
-from pydantic import BaseModel, Field
+from typing import Optional, Literal
+from pydantic import BaseModel
 from datetime import datetime
-import uuid
 
-class GoalBase(BaseModel):
+class GoalProgressRequest(BaseModel):
+    period: Literal["daily", "weekly", "monthly", "yearly"] = "monthly"
+
+class GoalProgressResponse(BaseModel):
     target_amount: float
-    deadline: datetime
-
-class GoalCreate(GoalBase):
-    pass
-
-class GoalUpdate(BaseModel):
-    target_amount: Optional[float]
-    deadline: Optional[datetime]
-    saved_amount: Optional[float]
-    is_active: Optional[bool]
-
-class GoalRead(GoalBase):
-    id: uuid.UUID
-    user_id: uuid.UUID
     saved_amount: float
-    is_active: bool
-
-    class Config:
-        orm_mode = True
+    progress_percentage: float
+    status: str
+    period_end_date: datetime
+    percentage_of_income: float
+    remaining_amount: float

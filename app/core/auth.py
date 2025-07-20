@@ -73,6 +73,7 @@ class User(Base):
         back_populates="user", 
         cascade="all, delete-orphan",
     )
+    notifications = relationship("Notification", back_populates="user", cascade="all, delete-orphan")
 
 # Helper function to create JWT tokens
 def create_access_token(subject: str, expires_delta: Optional[timedelta] = None) -> str:

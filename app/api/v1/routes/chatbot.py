@@ -14,14 +14,15 @@ from app.core.config import settings
 from app.core.database import get_async_session
 from app.crud.transaction import get_transactions_for_user
 from app.crud.category import get_categories_for_user
+from app.utils.budgeting import calculate_goal_progress
 from datetime import datetime, timedelta
 import calendar
 
 router = APIRouter()
 
 # Model ID for OpenRouter - using a valid model that works
-# OPENROUTER_MODEL_ID = "meta-llama/llama-3.2-3b-instruct"
-OPENROUTER_MODEL_ID = "deepseek/deepseek-chat-v3-0324:free"
+OPENROUTER_MODEL_ID = "meta-llama/llama-3.2-3b-instruct"
+# OPENROUTER_MODEL_ID = "deepseek/deepseek-chat-v3-0324:free"
 
 @router.post("/ask", response_model=ChatbotResponse)
 async def ask_chatbot(
@@ -60,19 +61,26 @@ async def ask_chatbot(
         - Suggest practical ways to improve financial habits
         
         IMPORTANT: When asked about specific spending in categories or time periods:
-        - Use the detailed spending data provided in the "category_spending_by_period" section
-        - If asked about spending in a specific category for a specific time period (e.g., "How much did I spend on shopping this month?"), 
-          look up the category name in the monthly_spending or current_month_by_category data
-        - Perform calculations as needed to answer specific questions about spending patterns
-        - If the data doesn't contain the exact information requested, use the available data to make the closest approximation
+        - Use the detailed expense overview data available in the "expense_overview" section
+        - This data contains category-wise spending details with allocated budget, actual spent, remaining amount, and progress percentage
+        - It also includes status indicators (On Track, Near Limit, Over Budget) for each category
         
         IMPORTANT: When asked about savings goals or budget progress:
-        - Calculate based on the user's monthly income and spending patterns
-        - Use the user's savings_goal_amount to determine progress
-        - Consider the difference between income and expenses to determine if the user is on track
+        - Use the "goal_progress" data which contains detailed information about the user's savings goal progress
+        - This includes target amount, saved amount, progress percentage, status, period end date, and remaining amount
+        - Goal status can be: Goal Achieved, On Track, In Progress, or Behind Target
+        - Different time periods (daily, weekly, monthly, yearly) affect the calculations
         
-        IMPORTANT: All monetary values should be treated as USD. Format currency as $X.XX.
+        IMPORTANT: When asked about overall financial health or dashboard information:
+        - Use the "dashboard_summary" data which provides comprehensive information
+        - This includes income, spent, remaining budget, savings progress, spending trends, category allocation
+        - It also includes daily spending patterns, top spending categories, and quick stats
+        
+        IMPORTANT: All monetary values should be treated as in local currency (₹). Format currency as ₹X,XX.
         Never make up information. If you don't have enough data to answer a question accurately, say so.
+        
+        User can view their financial data by different time periods: daily, weekly, monthly, and yearly.
+        For percentage values, provide them rounded to two decimal places.
         """
         
         # Create user prompt with data
@@ -83,8 +91,11 @@ async def ask_chatbot(
         User financial data: {user_data_str}
         
         Please provide a helpful response based on this information.
-        If the user is asking about specific spending in a category or time period, use the detailed spending data in the "category_spending_by_period" section to calculate the exact answer.
-        If the user is asking about savings goals or budget progress, calculate based on their income, spending patterns, and savings goal amount.
+        If the user is asking about specific spending in a category or time period, use the expense overview data.
+        If the user is asking about savings goals or budget progress, use the goal progress data.
+        For overall financial insights, use the dashboard summary data.
+        Give specific, data-backed answers to the user's questions and provide actionable advice when appropriate.
+        Always format currency values using the ₹ symbol (e.g., ₹5,000).
         """
         
         # Use OpenRouter API with a valid Llama model
@@ -215,50 +226,6 @@ async def prepare_user_data(user: User, db: AsyncSession) -> dict:
     
     # Process transactions
     transactions = []
-    monthly_spending = 0
-    weekly_spending = 0
-    daily_spending = {}
-    category_spending = defaultdict(float)
-    total_income = 0
-    total_expenses = 0
-    
-    # Track spending by category and time period
-    category_spending_by_period = {
-        "current_month": defaultdict(float),
-        "current_week": defaultdict(float),
-        "previous_month": defaultdict(float),
-        "last_7_days": defaultdict(float),
-        "by_day": {},
-        "by_month": {}
-    }
-    
-    # Create a map of category IDs to names for easier reference
-    category_id_to_name = {}
-    
-    # Fetch categories from the database
-    db_categories = await get_categories_for_user(user_id, db)
-    
-    # Process categories
-    categories = []
-    for cat in db_categories:
-        # Use custom_percentage if available, otherwise default_percentage
-        budget_percentage = safe_float(cat.custom_percentage) if hasattr(cat, 'custom_percentage') and cat.custom_percentage is not None else safe_float(cat.default_percentage)
-        
-        cat_dict = {
-            "id": str(cat.id),
-            "name": cat.name,
-            "budget_percentage": budget_percentage,
-            "description": cat.description if hasattr(cat, 'description') else "",
-            "color": getattr(cat, "color", "#CCCCCC"),
-            "spending": 0,  # Will be updated after processing transactions
-            "budget_amount": user_info["monthly_income"] * (budget_percentage / 100) if budget_percentage > 0 else 0
-        }
-        categories.append(cat_dict)
-        
-        # Add to the category ID to name map
-        category_id_to_name[str(cat.id)] = cat.name
-    
-    # Process transactions
     for tx in db_transactions:
         # Skip transactions without dates
         if tx.transaction_date is None:
@@ -267,207 +234,237 @@ async def prepare_user_data(user: User, db: AsyncSession) -> dict:
         tx_date = tx.transaction_date
         tx_amount = safe_float(tx.amount)
         
-        # Determine if it's an expense or income based on amount
-        # Negative amounts are expenses, positive are income
-        tx_type = "expense" if tx_amount < 0 else "income"
-        
-        # Use absolute value for display
-        display_amount = abs(tx_amount)
-        
-        # Track total income and expenses
-        if tx_type == "income":
-            total_income += display_amount
-        else:
-            total_expenses += display_amount
-        
         # Get category name
-        category_id = str(tx.category_id) if tx.category_id is not None else None
-        category_name = category_id_to_name.get(category_id, "Uncategorized") if category_id else "Uncategorized"
+        category_name = tx.category.name if tx.category else "Uncategorized"
         
         # Add to transactions list
         tx_dict = {
             "id": str(tx.id),
-            "amount": display_amount,
+            "amount": tx_amount,
             "description": tx.description,
             "date": tx.transaction_date.isoformat(),
-            "category_id": category_id,
-            "category_name": category_name,
-            "type": tx_type
+            "category_id": str(tx.category_id) if tx.category_id else None,
+            "category_name": category_name
         }
         transactions.append(tx_dict)
+    
+    # Get goal progress data for different periods
+    daily_goal_progress = await calculate_goal_progress(user, "daily", db)
+    weekly_goal_progress = await calculate_goal_progress(user, "weekly", db)
+    monthly_goal_progress = await calculate_goal_progress(user, "monthly", db)
+    yearly_goal_progress = await calculate_goal_progress(user, "yearly", db)
+    
+    # Structure goal progress data for all periods
+    goal_progress = {
+        "daily": {
+            "target_amount": daily_goal_progress["target_amount"],
+            "saved_amount": daily_goal_progress["saved_amount"],
+            "progress_percentage": daily_goal_progress["progress_percentage"],
+            "status": daily_goal_progress["status"],
+            "period_end_date": daily_goal_progress["period_end_date"].isoformat() if isinstance(daily_goal_progress["period_end_date"], datetime) else daily_goal_progress["period_end_date"],
+            "percentage_of_income": daily_goal_progress["percentage_of_income"],
+            "remaining_amount": daily_goal_progress["remaining_amount"]
+        },
+        "weekly": {
+            "target_amount": weekly_goal_progress["target_amount"],
+            "saved_amount": weekly_goal_progress["saved_amount"],
+            "progress_percentage": weekly_goal_progress["progress_percentage"],
+            "status": weekly_goal_progress["status"],
+            "period_end_date": weekly_goal_progress["period_end_date"].isoformat() if isinstance(weekly_goal_progress["period_end_date"], datetime) else weekly_goal_progress["period_end_date"],
+            "percentage_of_income": weekly_goal_progress["percentage_of_income"],
+            "remaining_amount": weekly_goal_progress["remaining_amount"]
+        },
+        "monthly": {
+            "target_amount": monthly_goal_progress["target_amount"],
+            "saved_amount": monthly_goal_progress["saved_amount"],
+            "progress_percentage": monthly_goal_progress["progress_percentage"],
+            "status": monthly_goal_progress["status"],
+            "period_end_date": monthly_goal_progress["period_end_date"].isoformat() if isinstance(monthly_goal_progress["period_end_date"], datetime) else monthly_goal_progress["period_end_date"],
+            "percentage_of_income": monthly_goal_progress["percentage_of_income"],
+            "remaining_amount": monthly_goal_progress["remaining_amount"]
+        },
+        "yearly": {
+            "target_amount": yearly_goal_progress["target_amount"],
+            "saved_amount": yearly_goal_progress["saved_amount"],
+            "progress_percentage": yearly_goal_progress["progress_percentage"],
+            "status": yearly_goal_progress["status"],
+            "period_end_date": yearly_goal_progress["period_end_date"].isoformat() if isinstance(yearly_goal_progress["period_end_date"], datetime) else yearly_goal_progress["period_end_date"],
+            "percentage_of_income": yearly_goal_progress["percentage_of_income"],
+            "remaining_amount": yearly_goal_progress["remaining_amount"],
+            "adjusted_monthly_goal": yearly_goal_progress.get("adjusted_monthly_goal", user_info["savings_goal_amount"])
+        }
+    }
+    
+    # Get expense overview data (simulated since we're not making actual API calls within the backend)
+    # This will mimic the structure of the expenses/overview/budget endpoint
+    expense_overview = {
+        "summary": {
+            "time_period": "monthly",
+            "period_label": "Monthly",
+            "allocated": user_info["monthly_income"],
+            "spent": sum(tx["amount"] for tx in transactions if tx["date"].startswith(f"{today.year}-{today.month:02d}")),
+            "remaining": user_info["monthly_income"] - sum(tx["amount"] for tx in transactions if tx["date"].startswith(f"{today.year}-{today.month:02d}"))
+        },
+        "categories": []
+    }
+    
+    # Get categories from the database
+    db_categories = await get_categories_for_user(user_id, db)
+    
+    # Process categories and calculate spending for expense overview
+    for cat in db_categories:
+        # Calculate spending for this category in the current month
+        category_spending = sum(tx["amount"] for tx in transactions 
+                            if tx["category_id"] == str(cat.id) and 
+                            tx["date"].startswith(f"{today.year}-{today.month:02d}"))
         
-        # Only track expenses for spending metrics
-        if tx_type == "expense":
-            # Track category spending
-            if category_id:
-                category_spending[category_id] += display_amount
-            
-            # Monthly spending
-            if start_of_month.date() <= tx_date.date() <= end_of_month.date():
-                monthly_spending += display_amount
-                
-                # Track by category for current month
-                if category_id:
-                    category_spending_by_period["current_month"][category_id] += display_amount
-            
-            # Previous month spending
-            if prev_month_start.date() <= tx_date.date() <= prev_month_end.date():
-                if category_id:
-                    category_spending_by_period["previous_month"][category_id] += display_amount
-            
-            # Weekly spending
-            if start_of_week.date() <= tx_date.date() <= end_of_week.date():
-                weekly_spending += display_amount
-                
-                # Track by category for current week
-                if category_id:
-                    category_spending_by_period["current_week"][category_id] += display_amount
-            
-            # Daily spending (last 7 days)
-            for i in range(7):
-                day = (today - timedelta(days=i))
-                day_start = datetime(day.year, day.month, day.day)
-                day_end = datetime(day.year, day.month, day.day, 23, 59, 59)
-                
-                if day_start.date() <= tx_date.date() <= day_end.date():
-                    day_str = day_start.date().isoformat()
-                    
-                    # Track total spending for this day
-                    if day_str not in daily_spending:
-                        daily_spending[day_str] = 0
-                    daily_spending[day_str] += display_amount
-                    
-                    # Track spending by category for this day
-                    if day_str not in category_spending_by_period["by_day"]:
-                        category_spending_by_period["by_day"][day_str] = defaultdict(float)
-                    
-                    if category_id:
-                        category_spending_by_period["by_day"][day_str][category_id] += display_amount
-                    
-                    # Also track in last_7_days
-                    if category_id:
-                        category_spending_by_period["last_7_days"][category_id] += display_amount
-            
-            # Track spending by month
-            month_key = f"{tx_date.year}-{tx_date.month:02d}"
-            if month_key not in category_spending_by_period["by_month"]:
-                category_spending_by_period["by_month"][month_key] = defaultdict(float)
-            
-            if category_id:
-                category_spending_by_period["by_month"][month_key][category_id] += display_amount
+        # Calculate allocated budget for this category
+        budget_percentage = safe_float(cat.custom_percentage) if hasattr(cat, 'custom_percentage') and cat.custom_percentage is not None else safe_float(cat.default_percentage)
+        allocated = user_info["monthly_income"] * (budget_percentage / 100) if budget_percentage > 0 else 0
+        
+        # Calculate remaining budget
+        remaining = allocated - category_spending
+        
+        # Determine status
+        status = "On Track"
+        if remaining < 0:
+            status = "Over Budget"
+        elif remaining <= allocated * 0.1:  # Within 10% of budget
+            status = "Near Limit"
+        
+        # Calculate progress percentage
+        progress_percentage = min(100, (category_spending / allocated * 100)) if allocated > 0 else 0
+        
+        # Add category to expense overview
+        expense_overview["categories"].append({
+            "id": str(cat.id),
+            "name": cat.name,
+            "allocated": allocated,
+            "spent": category_spending,
+            "remaining": remaining,
+            "status": status,
+            "progress_percentage": progress_percentage
+        })
     
-    # Update category spending totals and calculate budget status
-    for cat in categories:
-        cat["spending"] = category_spending.get(cat["id"], 0)
-        cat["remaining_budget"] = cat["budget_amount"] - cat["spending"]
-        cat["budget_status"] = "under_budget" if cat["remaining_budget"] >= 0 else "over_budget"
-        cat["percentage_used"] = (cat["spending"] / cat["budget_amount"] * 100) if cat["budget_amount"] > 0 else 0
-    
-    # Convert defaultdicts to regular dicts for JSON serialization
-    category_spending_by_period_json = {}
-    for period, data in category_spending_by_period.items():
-        if isinstance(data, defaultdict):
-            category_spending_by_period_json[period] = dict(data)
-        elif isinstance(data, dict):
-            period_dict = {}
-            for day, day_data in data.items():
-                if isinstance(day_data, defaultdict):
-                    period_dict[day] = dict(day_data)
-                else:
-                    period_dict[day] = day_data
-            category_spending_by_period_json[period] = period_dict
-    
-    # Add category names to the spending data for easier reference
-    category_spending_with_names = {}
-    for category_id, amount in category_spending.items():
-        category_name = category_id_to_name.get(category_id, "Uncategorized")
-        category_spending_with_names[category_name] = amount
-    
-    # Calculate derived metrics
-    monthly_income = user_info["monthly_income"]
-    remaining_monthly_budget = monthly_income - monthly_spending
-    remaining_weekly_budget = (monthly_income / 4) - weekly_spending
-    
-    # Calculate savings metrics based on transactions
-    current_month_savings = monthly_income - monthly_spending if monthly_income > monthly_spending else 0
-    savings_goal_amount = user_info["savings_goal_amount"]
-    savings_goal_progress = (current_month_savings / savings_goal_amount * 100) if savings_goal_amount > 0 else 0
-    
-    # Calculate average daily spending
-    days_in_data = len(daily_spending) if daily_spending else 1
-    average_daily_spending = sum(daily_spending.values()) / days_in_data if days_in_data > 0 else 0
-    
-    # Find biggest expense category
-    biggest_category = {"id": None, "name": "Unknown", "amount": 0}
-    for cat in categories:
-        if cat["spending"] > biggest_category["amount"]:
-            biggest_category = {
-                "id": cat["id"],
-                "name": cat["name"],
-                "amount": cat["spending"]
+    # Fetch dashboard summary data (simplified version since we're not calling actual API)
+    # This will mimic the structure of the dashboard/summary endpoint
+    dashboard_summary = {
+        "cards": {
+            "time_period": "monthly",
+            "period_label": "Monthly",
+            "income": user_info["monthly_income"],
+            "spent": expense_overview["summary"]["spent"],
+            "remaining": expense_overview["summary"]["remaining"],
+            "savings_progress": {
+                "percentage": goal_progress["monthly"]["progress_percentage"],
+                "saved_amount": goal_progress["monthly"]["saved_amount"],
+                "goal_amount": goal_progress["monthly"]["target_amount"],
+                "status": goal_progress["monthly"]["status"],
+                "period_end_date": goal_progress["monthly"]["period_end_date"],
+                "percentage_of_income": goal_progress["monthly"]["percentage_of_income"],
+                "remaining_amount": goal_progress["monthly"]["remaining_amount"]
             }
-    
-    # Add current month name for reference
-    current_month_name = today.strftime("%B %Y")
-    previous_month_name = prev_month_start.strftime("%B %Y")
-    
-    # Calculate budget allocation and spending breakdown
-    budget_allocation = {}
-    for cat in categories:
-        if cat["budget_percentage"] > 0:
-            budget_allocation[cat["name"]] = cat["budget_percentage"]
-    
-    # Calculate spending trends (week-over-week)
-    # Get last week's data
-    last_week_start = start_of_week - timedelta(days=7)
-    last_week_end = end_of_week - timedelta(days=7)
-    last_week_spending = 0
-    
-    for tx in db_transactions:
-        if tx.transaction_date is None:
-            continue
-            
-        tx_date = tx.transaction_date
-        tx_amount = safe_float(tx.amount)
-        
-        if tx_amount < 0 and last_week_start.date() <= tx_date.date() <= last_week_end.date():
-            last_week_spending += abs(tx_amount)
-    
-    spending_trend = {
-        "this_week": weekly_spending,
-        "last_week": last_week_spending,
-        "change_percentage": ((weekly_spending - last_week_spending) / last_week_spending * 100) if last_week_spending > 0 else 0,
-        "trend": "increasing" if weekly_spending > last_week_spending else "decreasing" if weekly_spending < last_week_spending else "stable"
+        },
+        "spending_trends": generate_spending_trends(transactions, today),
+        "category_allocation": generate_category_allocation(db_categories, user_info["monthly_income"]),
+        "daily_spending": generate_daily_spending(transactions, today),
+        "top_spending_categories": sorted(expense_overview["categories"], key=lambda x: x["spent"], reverse=True)[:5],
+        "quick_stats": {
+            "total_transactions": len([tx for tx in transactions if tx["date"].startswith(f"{today.year}-{today.month:02d}")]),
+            "avg_transaction_amount": calculate_avg_transaction(transactions, today),
+            "categories_used": len(set(tx["category_id"] for tx in transactions if tx["date"].startswith(f"{today.year}-{today.month:02d}") and tx["category_id"]))
+        },
+        "category_health": expense_overview["categories"]
     }
     
     # Compile final data structure
     return {
         "user": user_info,
         "transactions": transactions,
-        "categories": categories,
+        "goal_progress": goal_progress,
+        "expense_overview": expense_overview,
+        "dashboard_summary": dashboard_summary,
         "derived_data": {
             "today": today.date().isoformat(),
-            "current_month": current_month_name,
-            "previous_month": previous_month_name,
+            "current_month": today.strftime("%B %Y"),
+            "previous_month": prev_month_start.strftime("%B %Y"),
             "start_of_month": start_of_month.date().isoformat(),
             "end_of_month": end_of_month.date().isoformat(),
             "start_of_week": start_of_week.date().isoformat(),
-            "end_of_week": end_of_week.date().isoformat(),
-            "monthly_spending": monthly_spending,
-            "weekly_spending": weekly_spending,
-            "daily_spending": daily_spending,
-            "average_daily_spending": average_daily_spending,
-            "remaining_monthly_budget": remaining_monthly_budget,
-            "remaining_weekly_budget": remaining_weekly_budget,
-            "savings_goal_amount": savings_goal_amount,
-            "current_month_savings": current_month_savings,
-            "savings_goal_progress": savings_goal_progress,
-            "total_income": total_income,
-            "total_expenses": total_expenses,
-            "biggest_expense_category": biggest_category,
-            "category_spending": category_spending_with_names,
-            "category_spending_by_period": category_spending_by_period_json,
-            "budget_allocation": budget_allocation,
-            "spending_trend": spending_trend
+            "end_of_week": end_of_week.date().isoformat()
         }
-    } 
+    }
+
+def generate_spending_trends(transactions, today):
+    """Generate spending trends data for the dashboard"""
+    weekly_spending = defaultdict(float)
+    
+    # Get current month transactions
+    month_transactions = [tx for tx in transactions if tx["date"].startswith(f"{today.year}-{today.month:02d}")]
+    
+    # Group by week
+    for week_num in range(1, 5):
+        # Approximate week start and end (simplistic approach)
+        week_start_day = (week_num - 1) * 7 + 1
+        week_end_day = week_num * 7
+        
+        for tx in month_transactions:
+            tx_day = int(tx["date"].split("T")[0].split("-")[2])
+            if week_start_day <= tx_day <= week_end_day:
+                weekly_spending[f"Week {week_num}"] += tx["amount"]
+    
+    # Format for dashboard
+    trends = []
+    for week_num in range(1, 5):
+        trends.append({
+            "label": f"Week {week_num}",
+            "amount": weekly_spending.get(f"Week {week_num}", 0)
+        })
+    
+    return trends
+
+def generate_category_allocation(categories, monthly_income):
+    """Generate category allocation data for the dashboard"""
+    allocation = []
+    for cat in categories:
+        # Calculate allocated budget for this category
+        budget_percentage = cat.custom_percentage if hasattr(cat, 'custom_percentage') and cat.custom_percentage is not None else cat.default_percentage
+        allocated = monthly_income * (budget_percentage / 100) if budget_percentage > 0 else 0
+        
+        # Generate a color based on the category name
+        color = f"#{hash(cat.name) % 0xffffff:06x}"
+        
+        allocation.append({
+            "name": cat.name,
+            "allocated": allocated,
+            "color": color
+        })
+    
+    return allocation
+
+def generate_daily_spending(transactions, today):
+    """Generate daily spending data for the dashboard"""
+    daily_spending = []
+    
+    for i in range(7, 0, -1):
+        day_date = today.date() - timedelta(days=i-1)
+        day_str = day_date.isoformat()
+        
+        # Sum transactions for this day
+        day_amount = sum(tx["amount"] for tx in transactions if tx["date"].startswith(day_str))
+        
+        daily_spending.append({
+            "label": day_date.strftime("%b %d"),
+            "amount": day_amount
+        })
+    
+    return daily_spending
+
+def calculate_avg_transaction(transactions, today):
+    """Calculate average transaction amount for the current month"""
+    month_transactions = [tx for tx in transactions if tx["date"].startswith(f"{today.year}-{today.month:02d}")]
+    if not month_transactions:
+        return 0
+    
+    total_amount = sum(tx["amount"] for tx in month_transactions)
+    return total_amount / len(month_transactions)

@@ -1,68 +1,37 @@
 # app/api/v1/routes/goals.py
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Request
 from sqlalchemy.ext.asyncio import AsyncSession
-from typing import List
-import uuid
 
-from app.schemas.goal import GoalCreate, GoalRead, GoalUpdate
-from app.crud.goal import (
-    create_goal_for_user,
-    get_goals_for_user,
-    get_goal_by_id,
-    update_goal,
-    delete_goal,
-)
+from app.schemas.goal import GoalProgressRequest, GoalProgressResponse
+from app.utils.budgeting import calculate_goal_progress
 from app.core.database import get_async_session
-from app.core.auth import current_active_user, User
+from app.core.auth import User
+from app.api.deps import get_current_user
 
 router = APIRouter(prefix="/goals", tags=["goals"])
 
-@router.get("", response_model=List[GoalRead])
-async def read_goals(
+@router.get("/progress", response_model=GoalProgressResponse)
+async def get_goal_progress(
+    request: Request,
+    period_request: GoalProgressRequest = Depends(),
     db: AsyncSession = Depends(get_async_session),
-    user: User = Depends(current_active_user),
+    user: User = Depends(get_current_user),
 ):
-    return await get_goals_for_user(user.id, db)
-
-@router.post("", response_model=GoalRead, status_code=status.HTTP_201_CREATED)
-async def create_goal(
-    goal_in: GoalCreate,
-    db: AsyncSession = Depends(get_async_session),
-    user: User = Depends(current_active_user),
-):
-    return await create_goal_for_user(user.id, goal_in, db)
-
-@router.get("/{goal_id}", response_model=GoalRead)
-async def read_goal(
-    goal_id: uuid.UUID,
-    db: AsyncSession = Depends(get_async_session),
-    user: User = Depends(current_active_user),
-):
-    goal = await get_goal_by_id(goal_id, user.id, db)
-    if not goal:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Goal not found")
-    return goal
-
-@router.patch("/{goal_id}", response_model=GoalRead)
-async def update_goal_endpoint(
-    goal_id: uuid.UUID,
-    goal_in: GoalUpdate,
-    db: AsyncSession = Depends(get_async_session),
-    user: User = Depends(current_active_user),
-):
-    goal = await get_goal_by_id(goal_id, user.id, db)
-    if not goal:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Goal not found")
-    return await update_goal(goal, goal_in, db)
-
-@router.delete("/{goal_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_goal_endpoint(
-    goal_id: uuid.UUID,
-    db: AsyncSession = Depends(get_async_session),
-    user: User = Depends(current_active_user),
-):
-    goal = await get_goal_by_id(goal_id, user.id, db)
-    if not goal:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Goal not found")
-    await delete_goal(goal, db)
-    return None
+    """
+    Calculate savings goal progress based on the selected period.
+    
+    - **period**: The time period for calculation (daily, weekly, monthly, yearly). Default is monthly.
+    
+    Returns:
+    - **target_amount**: Target savings amount for the selected period
+    - **saved_amount**: Amount saved so far in the period
+    - **progress_percentage**: Percentage of target achieved
+    - **status**: Goal status (e.g., "On Track", "Behind Target")
+    - **period_end_date**: End date of the current period
+    - **percentage_of_income**: What percentage of income the goal represents
+    - **remaining_amount**: Amount remaining to reach the target
+    """
+    # Calculate goal progress using the utility function
+    result = await calculate_goal_progress(user, period_request.period, db)
+    
+    return result

@@ -8,11 +8,12 @@ from enum import Enum
 from collections import defaultdict
 
 from app.core.database import get_async_session
-from app.core.auth import current_active_user, User
+from app.core.auth import User
 from app.crud.category import get_categories_for_user
 from app.crud.expense import get_expenses_for_user
 from app.crud.transaction import get_transactions_for_user
-from app.utils.budgeting import allocate_budget, calculate_daily_budget, calculate_monthly_recurring_total
+from app.utils.budgeting import calculate_goal_progress
+# from app.utils.budgeting import allocate_budget, calculate_daily_budget, calculate_monthly_recurring_total, calculate_goal_progress
 from app.models.category import Category
 from app.models.transaction import Transaction
 from app.api.deps import get_current_user
@@ -83,17 +84,8 @@ async def get_dashboard_summary(
     total_spent = sum(tx.amount for tx in period_transactions)
     remaining_budget = allocated_budget - total_spent
 
-    savings_progress_percentage = 0
-    if savings_goal > 0:
-        if time_period == TimePeriod.monthly:
-            days_in_month = (end_date - start_date).days
-            days_passed = (now - start_date).days
-            actual_savings = max(0, monthly_income - total_spent)
-            savings_progress_percentage = min(100, (actual_savings / savings_goal * 100)) if savings_goal > 0 else 0
-        else:
-            actual_savings = max(0, allocated_budget - total_spent)
-            period_savings_goal = savings_goal * multiplier
-            savings_progress_percentage = min(100, (actual_savings / period_savings_goal * 100)) if period_savings_goal > 0 else 0
+    # Get savings goal progress using the new calculation
+    goal_progress = await calculate_goal_progress(user, time_period.value, db)
 
     category_data = []
     category_allocation = {}
@@ -242,9 +234,13 @@ async def get_dashboard_summary(
             "spent": round(total_spent, 2),
             "remaining": round(remaining_budget, 2),
             "savings_progress": {
-                "percentage": round(savings_progress_percentage, 2),
-                "saved_amount": round(max(0, monthly_income * multiplier - total_spent), 2),
-                "goal_amount": round(savings_goal * multiplier, 2)
+                "percentage": round(goal_progress["progress_percentage"], 2),
+                "saved_amount": round(goal_progress["saved_amount"], 2),
+                "goal_amount": round(goal_progress["target_amount"], 2),
+                "status": goal_progress["status"],
+                "period_end_date": goal_progress["period_end_date"],
+                "percentage_of_income": round(goal_progress["percentage_of_income"], 2),
+                "remaining_amount": round(goal_progress["remaining_amount"], 2)
             }
         },
         "spending_trends": spending_trends,
@@ -258,4 +254,3 @@ async def get_dashboard_summary(
         },
         "category_health": category_data
     }
-    
