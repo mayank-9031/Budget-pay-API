@@ -2,7 +2,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
-from typing import Dict, Any
+from typing import Dict, Any, List
 import uuid
 from datetime import datetime, timedelta
 from enum import Enum
@@ -98,7 +98,8 @@ async def get_expense_overview(
     remaining_budget = allocated_budget - total_spent
     
     # Prepare category-wise data
-    category_data = []
+    dynamic_categories = []
+    fixed_categories = []
     
     for category in categories:
         # Calculate allocated amount for this category based on percentage
@@ -121,18 +122,24 @@ async def get_expense_overview(
         elif category_spent >= category_allocated * 0.9:
             status = "Near Limit"
         
-        # Calculate progress percentage (capped at 100%)
-        progress_percentage = min(100.0, (category_spent / category_allocated * 100.0) if category_allocated > 0 else 0.0)
-        
-        category_data.append({
+        # Prepare category data based on whether it's a fixed or dynamic category
+        category_data = {
             "id": str(category.id),
             "name": category.name,
             "allocated": round(category_allocated, 2),
             "spent": round(category_spent, 2),
             "remaining": round(category_remaining, 2),
             "status": status,
-            "progress_percentage": round(progress_percentage, 2)
-        })
+        }
+        
+        if category.is_fixed:
+            # For fixed categories, no progress percentage is needed
+            fixed_categories.append(category_data)
+        else:
+            # For dynamic categories, include progress percentage
+            progress_percentage = min(100.0, (category_spent / category_allocated * 100.0) if category_allocated > 0 else 0.0)
+            category_data["progress_percentage"] = round(progress_percentage, 2)
+            dynamic_categories.append(category_data)
     
     return {
         "summary": {
@@ -142,5 +149,6 @@ async def get_expense_overview(
             "spent": round(safe_float(total_spent), 2),
             "remaining": round(safe_float(remaining_budget), 2)
         },
-        "categories": category_data
+        "dynamic_categories": dynamic_categories,
+        "fixed_categories": fixed_categories
     }

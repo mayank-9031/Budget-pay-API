@@ -17,6 +17,7 @@ class Category(Base):
     # User can override allocation percentage on the fly
     custom_percentage = Column(Float, nullable=True)
     is_default = Column(Boolean(), default=False)  # True for built-in categories (Essentials, etc.)
+    is_fixed = Column(Boolean(), default=False)  # True for fixed expenses, False for dynamic expenses
 
     created_at = Column(String, default=None)
     updated_at = Column(String, default=None)

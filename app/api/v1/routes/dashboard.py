@@ -87,6 +87,11 @@ async def get_dashboard_summary(
     # Get savings goal progress using the new calculation
     goal_progress = await calculate_goal_progress(user, time_period.value, db)
 
+    # Separate categories into dynamic and fixed
+    dynamic_categories = [category for category in categories if not category.is_fixed]
+    fixed_categories = [category for category in categories if category.is_fixed]
+
+    # Process categories
     category_data = []
     category_allocation = {}
     spent_per_category = defaultdict(float)
@@ -122,7 +127,8 @@ async def get_dashboard_summary(
             "remaining": round(category_remaining, 2),
             "status": status,
             "progress_percentage": round(progress_percentage, 2),
-            "color": f"#{hash(category.name) % 0xffffff:06x}"
+            "color": f"#{hash(category.name) % 0xffffff:06x}",
+            "is_fixed": category.is_fixed
         })
 
     category_data.sort(key=lambda x: x["spent"], reverse=True)
@@ -202,6 +208,46 @@ async def get_dashboard_summary(
                 "amount": round(monthly_spending.get(month_num, 0), 2)
             })
 
+    # Calculate yearly monthly expenses chart (independent of period dropdown)
+    yearly_monthly_expenses = []
+    current_year = now.year
+    
+    for month_num in range(1, 13):
+        if month_num == 12:
+            month_start = datetime(current_year, month_num, 1)
+            month_end = datetime(current_year + 1, 1, 1)
+        else:
+            month_start = datetime(current_year, month_num, 1)
+            month_end = datetime(current_year, month_num + 1, 1)
+            
+        month_transactions = [
+            tx for tx in all_transactions 
+            if month_start <= tx.transaction_date < month_end
+        ]
+        
+        # Calculate total, fixed, and dynamic expenses for the month
+        month_total = sum(tx.amount for tx in month_transactions)
+        
+        # Calculate fixed and dynamic expenses
+        month_fixed = sum(
+            tx.amount for tx in month_transactions 
+            if any(cat.id == tx.category_id and cat.is_fixed for cat in fixed_categories)
+        )
+        
+        month_dynamic = sum(
+            tx.amount for tx in month_transactions 
+            if any(cat.id == tx.category_id and not cat.is_fixed for cat in dynamic_categories)
+        )
+        
+        month_name = datetime(2000, month_num, 1).strftime("%b")
+        
+        yearly_monthly_expenses.append({
+            "month": month_name,
+            "total": round(month_total, 2),
+            "fixed": round(month_fixed, 2),
+            "dynamic": round(month_dynamic, 2)
+        })
+
     daily_spending = []
     for i in range(7, 0, -1):
         day_date = now.date() - timedelta(days=i-1)
@@ -219,7 +265,8 @@ async def get_dashboard_summary(
         category_allocation_data.append({
             "name": cat["name"],
             "allocated": cat["allocated"],
-            "color": cat["color"]
+            "color": cat["color"],
+            "is_fixed": cat["is_fixed"]
         })
 
     total_transactions = len(period_transactions)
@@ -247,6 +294,7 @@ async def get_dashboard_summary(
         "category_allocation": category_allocation_data,
         "daily_spending": daily_spending,
         "top_spending_categories": top_spending_categories,
+        "yearly_monthly_expenses": yearly_monthly_expenses,
         "quick_stats": {
             "total_transactions": total_transactions,
             "avg_transaction_amount": avg_transaction_amount,

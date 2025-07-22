@@ -9,6 +9,7 @@ class CategoryBase(BaseModel):
     default_percentage: Optional[float] = Field(..., description="Suggested percent allocation (0–100)")
     custom_percentage: Optional[float] = Field(None, description="User override % (0–100)")
     is_default: Optional[bool] = False
+    is_fixed: Optional[bool] = False
 
 class CategoryCreate(CategoryBase):
     pass
@@ -19,6 +20,7 @@ class CategoryUpdate(BaseModel):
     default_percentage: Optional[float] = None
     custom_percentage: Optional[float] = None
     is_default: Optional[bool] = None
+    is_fixed: Optional[bool] = None
 
     class Config:
         # Only fields provided in the request will be validated/used
