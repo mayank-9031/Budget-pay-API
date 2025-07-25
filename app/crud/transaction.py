@@ -5,9 +5,20 @@ from app.models.transaction import Transaction
 from typing import List, Optional
 import uuid
 from app.schemas.transaction import TransactionCreate, TransactionUpdate
+from sqlalchemy import desc
 
 async def get_transactions_for_user(user_id: uuid.UUID, db: AsyncSession) -> List[Transaction]:
     result = await db.execute(select(Transaction).where(Transaction.user_id == user_id))
+    return result.scalars().all()
+
+async def get_recent_transactions(db: AsyncSession, user_id: uuid.UUID, limit: int = 10) -> List[Transaction]:
+    """Get the most recent transactions for a user with optional limit"""
+    result = await db.execute(
+        select(Transaction)
+        .where(Transaction.user_id == user_id)
+        .order_by(desc(Transaction.transaction_date))
+        .limit(limit)
+    )
     return result.scalars().all()
 
 async def get_transaction_by_id(transaction_id: uuid.UUID, user_id: uuid.UUID, db: AsyncSession) -> Optional[Transaction]:

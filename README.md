@@ -4,47 +4,99 @@ Budget Pay is a comprehensive budget management application that helps users tra
 
 ## Features
 
-- User authentication and profile management
-  - Email/password authentication
-  - Google OAuth login
-- Expense tracking and categorization
-- Transaction management
-- Saving goals
-- Budget allocation by category
-- Dashboard with financial insights
-- AI-powered financial chatbot
+- User Authentication (JWT, OAuth)
+- Budget Management
+- Expense Tracking
+- Financial Goals
+- Transaction Management
+- AI-Powered Chatbot
+- Real-time Notifications (WebSockets)
+- AI-Generated Personalized Notifications
 
-## Authentication Options
+## Real-time Notification System
 
-### Traditional Email/Password
+The application includes a comprehensive notification system with the following features:
 
-Users can register and login using their email and password. Email verification is required to activate the account.
+### User-specific Notifications
 
-### Google OAuth
+All notifications are tied to specific users, ensuring data privacy and relevant information delivery.
 
-Users can sign in with their Google account. This provides a seamless login experience without requiring a separate password.
+### WebSocket Real-time Updates
 
-To set up Google OAuth:
+Notifications are delivered in real-time via WebSockets, enabling instant updates without polling.
 
-1. Create a project in the Google Cloud Console
-2. Configure the OAuth consent screen
-3. Create OAuth client credentials
-4. Set the following environment variables:
-   - `GOOGLE_CLIENT_ID`: Your Google OAuth client ID
-   - `GOOGLE_CLIENT_SECRET`: Your Google OAuth client secret
-   - `GOOGLE_REDIRECT_URI`: The callback URL (e.g., `https://your-api.com/api/v1/auth/google/callback`)
+- Connect to the WebSocket endpoint: `/api/v1/notification/ws?token=YOUR_JWT_TOKEN`
+- Receive real-time notification events as JSON objects
+- Notifications include type, title, message, and other metadata
 
-## AI Chatbot
+### AI-Generated Notifications
 
-The Budget Pay application includes an AI-powered chatbot that can:
+The system leverages OpenRouter API to generate personalized, intelligent notifications based on user data:
 
-1. Answer general finance and budgeting questions
-2. Provide personalized insights based on the user's financial data
-3. Help users make better financial decisions
+- Budget insights based on spending patterns
+- Savings tips customized to user behavior
+- Goal progress updates with personalized encouragement
+- Overspending alerts with contextual information
 
-The chatbot can answer questions like:
-- "How much money do I have left to spend this week?"
-- "What were my biggest expenses last month?"
-- "How am I doing on my savings goals?"
-- "What is the 50/30/20 budget rule?"
-- "How can I save more money each month?"
+### REST API Endpoints
+
+The notification system exposes these REST endpoints:
+
+- `GET /api/v1/notification/` - List user's notifications with optional filtering
+- `GET /api/v1/notification/unread-count` - Get count of unread notifications
+- `GET /api/v1/notification/{id}` - Get specific notification
+- `POST /api/v1/notification/{id}/read` - Mark notification as read
+- `POST /api/v1/notification/read_all` - Mark all notifications as read
+- `POST /api/v1/notification/generate-ai` - Generate custom AI notification
+- `POST /api/v1/notification/generate-budget-insight` - Generate AI budget insight
+
+## Configuration
+
+To enable AI-powered notifications, set the `OPENROUTER_API_KEY` environment variable with your OpenRouter API key.
+
+## WebSocket Example (JavaScript)
+
+```javascript
+// Connect to notification WebSocket
+const token = "your_jwt_token";
+const ws = new WebSocket(`wss://api.budgetpay.com/api/v1/notification/ws?token=${token}`);
+
+ws.onopen = () => {
+  console.log("Connected to notification service");
+};
+
+ws.onmessage = (event) => {
+  const notification = JSON.parse(event.data);
+  console.log("New notification:", notification);
+  
+  // Display notification to user
+  showNotification(notification.data.title, notification.data.message);
+};
+
+ws.onclose = () => {
+  console.log("Disconnected from notification service");
+};
+
+// Function to display notification
+function showNotification(title, message) {
+  // Implementation depends on your frontend
+}
+```
+
+## AI-powered Notifications Example
+
+```javascript
+// Request an AI-generated budget insight
+async function generateBudgetInsight() {
+  const response = await fetch('/api/v1/notification/generate-budget-insight', {
+    method: 'POST',
+    headers: {
+      'Authorization': 'Bearer YOUR_JWT_TOKEN',
+      'Content-Type': 'application/json'
+    }
+  });
+  
+  const notification = await response.json();
+  console.log("AI-generated insight:", notification);
+}
+```

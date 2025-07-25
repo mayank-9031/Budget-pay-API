@@ -41,14 +41,12 @@ async def create_db_and_tables():
 app = FastAPI(
     title="Budget Pay API",
     version="1.1.0",
-    description="""
-    
-    """,
     openapi_url="/openapi.json",
     openapi_tags=[
         {"name": "Authentication", "description": "Operations related to authentication"},
         {"name": "Google Authentication", "description": "Google OAuth authentication endpoints"},
         {"name": "User Management", "description": "User profile and settings operations"},
+        {"name": "Notifications", "description": "Real-time and AI-powered notifications"},
     ],
 )
 
@@ -204,7 +202,7 @@ async def root():
     """Root endpoint with API information"""
     return {
         "message": "Budget Pay API is running!",
-        "version": "0.1.0",
+        "version": "1.1.0",
         "docs": "/docs",
         "redoc": "/redoc",
         "endpoints": {
@@ -212,15 +210,15 @@ async def root():
             "login": "/api/v1/auth/jwt/login",
             "logout": "/api/v1/auth/jwt/logout",
             "profile": "/api/v1/users/me",
-            "request_verify": "/api/v1/auth/request-verify-token",
-            "verify": "/api/v1/auth/verify",
-            "forgot_password": "/api/v1/auth/forgot-password",
-            "reset_password": "/api/v1/auth/reset-password"
+            "notifications": "/api/v1/notification",
+            "notification_ws": "/api/v1/notification/ws",
         },
         "features": {
             "email_verification": True,
             "password_reset": True,
-            "jwt_authentication": True
+            "jwt_authentication": True,
+            "real_time_notifications": True,
+            "ai_notifications": True
         }
     }
 
@@ -251,8 +249,8 @@ app.include_router(expenses.router, prefix="/api/v1")
 app.include_router(transactions.router, prefix="/api/v1")
 app.include_router(dashboard.router, prefix="/api/v1")
 app.include_router(chatbot.router, prefix="/api/v1/chatbot", tags=["Chatbot"])
-app.include_router(notification.router, prefix="/api/v1/notification", tags=["notification"])
-app.include_router(goals.router, prefix="/api/v1/goals", tags=["goals"])
+app.include_router(notification.router, prefix="/api/v1/notification", tags=["Notifications"])
+app.include_router(goals.router, prefix="/api/v1/goals", tags=["Goals"])
 
 # ------------------------------------------------------------
 # STARTUP EVENT
@@ -266,30 +264,15 @@ async def on_startup():
         print(f"✅ Frontend URL: {settings.FRONTEND_URL}")
         print(f"✅ Backend URL: {settings.BACKEND_BASE_URL}")
         
-        # Test SendGrid configuration
-        if settings.SENDGRID_API_KEY and settings.EMAIL_FROM:
-            print("✅ SendGrid configuration found")
+        # Test OpenRouter configuration
+        if settings.OPENROUTER_API_KEY:
+            print("✅ OpenRouter API key configured for AI notifications")
         else:
-            print("❌ SendGrid configuration missing")
+            print("⚠️ OpenRouter API key not configured - AI notifications will be unavailable")
             
     except Exception as e:
         print(f"❌ Startup error: {str(e)}")
         logging.error(f"Startup error: {str(e)}")
-
-@app.post("/debug/test-email", tags=["Debug"])
-async def test_email(email: str):
-    """Debug endpoint to test email sending"""
-    from app.core.auth import send_email_via_sendgrid
-    
-    try:
-        success = await send_email_via_sendgrid(
-            email, 
-            "Test Email", 
-            "<h1>This is a test email from Budget Pay</h1>"
-        )
-        return {"success": success, "email": email}
-    except Exception as e:
-        return {"success": False, "error": str(e), "email": email}
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8000))

@@ -59,6 +59,23 @@ async def get_current_user(
             headers={"WWW-Authenticate": "Bearer"},
         )
     
+    return await get_current_user_from_token(token, db)
+
+async def get_current_user_from_token(token: str, db: AsyncSession) -> User:
+    """
+    Extract and validate user from a JWT token string.
+    Useful for WebSocket authentication and other cases where the token is directly available.
+    
+    Args:
+        token: JWT token string
+        db: Database session
+        
+    Returns:
+        User object if token is valid
+        
+    Raises:
+        HTTPException: If token is invalid or user not found
+    """
     try:
         # Convert SecretStr to str if needed
         secret_key = str(settings.SECRET_KEY) if hasattr(settings.SECRET_KEY, "get_secret_value") else settings.SECRET_KEY
