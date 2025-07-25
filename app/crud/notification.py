@@ -5,10 +5,17 @@ from app.models.notification import Notification
 from app.schemas.notification import NotificationCreate, NotificationUpdate
 from typing import List, Optional
 import uuid
+from datetime import datetime, timedelta
 
 async def create_notification(db: AsyncSession, notification: NotificationCreate) -> Notification:
     """Create a new notification"""
-    db_notification = Notification(**notification.dict())
+    # Apply IST timezone to creation timestamp (UTC+5:30)
+    utc_now = datetime.utcnow()
+    ist_offset = timedelta(hours=5, minutes=30)
+    ist_now = utc_now + ist_offset
+    
+    notification_dict = notification.dict()
+    db_notification = Notification(**notification_dict, created_at=ist_now)
     db.add(db_notification)
     await db.commit()
     await db.refresh(db_notification)

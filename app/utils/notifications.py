@@ -97,12 +97,19 @@ async def generate_ai_notification(
         if notification_type == "budget_insight":
             user_prompt = f"""
             Create a personalized budget insight notification based on this user data:
-            {json.dumps(context, indent=2)}
             
-            Focus on useful, actionable insights about their spending patterns, savings progress, or budget category performance.
-            Highlight opportunities to save money or better allocate their budget.
-            If there's a category where they're overspending, mention it specifically.
-            If they're doing well with savings, acknowledge and encourage that.
+            User financial overview:
+            - Monthly income: ₹{context['financial_overview']['monthly_income']}
+            - Spent so far this month: ₹{context['financial_overview']['total_spent']}
+            - Remaining budget: ₹{context['financial_overview']['remaining_budget']}
+            - Percent of budget used: {context['financial_overview']['percent_budget_used']:.1f}%
+            - Days left in month: {context['time_info']['days_left_in_month']}
+            - Month progress: {context['financial_overview']['month_progress_percent']:.1f}%
+            
+            Top spending categories:
+            {', '.join([f"{cat['name']}: ₹{cat['amount']}" for cat in context['spending_patterns']['top_categories'][:2]])}
+            
+            Focus on useful, actionable insights about their spending patterns, budget allocation, or month-to-date spending vs. month progress.
             
             Respond with:
             Title: [Catchy, emoji-friendly title about their budget/spending]
@@ -110,13 +117,18 @@ async def generate_ai_notification(
             """
         elif notification_type == "saving_tip":
             user_prompt = f"""
-            Generate a personalized money-saving tip for a user with these spending habits:
-            {json.dumps(context, indent=2)}
+            Generate a personalized money-saving tip for this user:
             
-            Focus on practical, specific advice based on their actual spending patterns.
-            Identify categories where they could cut back.
-            If they spend a lot on a specific category, suggest a realistic way to save.
-            Use actual numbers from their data when suggesting savings.
+            User financial overview:
+            - Monthly income: ₹{context['financial_overview']['monthly_income']}
+            - Spent so far: ₹{context['financial_overview']['total_spent']}
+            - Top spending categories: {', '.join([f"{cat['name']}: ₹{cat['amount']}" for cat in context['spending_patterns']['top_categories'][:2]])}
+            
+            Category breakdown:
+            {', '.join([f"{cat['name']}: ₹{cat['spending']} (allocated: ₹{cat['allocated']})" for cat in context['categories'][:3]])}
+            
+            Focus on the category where they could save the most money, with a specific and practical tip.
+            Suggest a realistic amount they could save by following your tip.
             
             Respond with:
             Title: [Catchy, emoji-friendly saving tip title]
@@ -124,23 +136,77 @@ async def generate_ai_notification(
             """
         elif notification_type == "goal_progress":
             user_prompt = f"""
-            Create an encouraging notification about progress toward financial goals:
-            {json.dumps(context, indent=2)}
+            Create an encouraging notification about this user's savings goal progress:
             
-            Focus on their savings goal progress and what they need to do to stay on track.
-            Be motivational but realistic about their current pace.
-            Include specific numbers about their progress and what's needed to reach their goal.
+            Monthly savings goal: ₹{context['savings_goals']['monthly']['goal_amount']}
+            Current progress: ₹{context['savings_goals']['monthly']['saved_amount']} ({context['savings_goals']['monthly']['progress_percentage']:.1f}%)
+            Status: {context['savings_goals']['monthly']['status']}
+            Month progress: {context['financial_overview']['month_progress_percent']:.1f}%
+            
+            Focus on:
+            1. Current progress relative to month completion
+            2. Specific amount needed to stay on track 
+            3. Encouragement that's motivational but realistic
+            
+            If they're behind target, suggest a specific action they can take.
+            If they're on track, celebrate their progress and encourage consistency.
             
             Respond with:
             Title: [Catchy, emoji-friendly goal progress title]
             Message: [Motivational message with specific figures about their progress]
             """
+        elif notification_type == "spending_alert":
+            # Find the most overspent category
+            most_overspent = None
+            if context['spending_patterns']['overspent_categories']:
+                most_overspent = max(context['spending_patterns']['overspent_categories'], key=lambda x: x['overspent_by'])
+            
+            user_prompt = f"""
+            Create an alert notification about overspending:
+            
+            {'Most overspent category: ' + most_overspent['name'] + ', overspent by ₹' + str(most_overspent['overspent_by']) if most_overspent else 'User has multiple overspent categories'}
+            Overspent categories: {', '.join([f"{cat['name']}: overspent by ₹{cat['overspent_by']}" for cat in context['spending_patterns']['overspent_categories'][:3]])}
+            Days left in month: {context['time_info']['days_left_in_month']}
+            Remaining budget: ₹{context['financial_overview']['remaining_budget']}
+            
+            Create an alert that:
+            1. Highlights the specific overspending issue
+            2. Mentions the amount overspent
+            3. Suggests a specific action to take
+            4. Is helpful but not judgmental
+            
+            Respond with:
+            Title: [Catchy, emoji-friendly alert title]
+            Message: [Specific alert message with amounts and action suggestion]
+            """
+        elif notification_type == "activity_reminder":
+            user_prompt = f"""
+            Create a friendly reminder notification for a user who hasn't logged any transactions in the past 24 hours:
+            
+            Current date: {context['time_info']['current_date']} ({context['time_info']['day_of_week']})
+            Last transaction: {context['transaction_history']['recent_transactions'][0]['date'] if context['transaction_history']['recent_transactions'] else 'None recent'}
+            Remaining budget: ₹{context['financial_overview']['remaining_budget']}
+            Days left in month: {context['time_info']['days_left_in_month']}
+            
+            Create a gentle reminder that:
+            1. Encourages the user to log their recent transactions
+            2. Emphasizes the importance of tracking for budget success
+            3. Is friendly and motivational, not pushy
+            
+            Respond with:
+            Title: [Catchy, emoji-friendly reminder title]
+            Message: [Friendly reminder message]
+            """
         else:
             user_prompt = f"""
-            Create a helpful financial notification based on this user data:
-            {json.dumps(context, indent=2)}
+            Create a helpful financial notification for this user:
             
-            Focus on whatever insight would be most valuable to this user based on their data.
+            Monthly income: ₹{context['user']['monthly_income']}
+            Spent this month: ₹{context['financial_overview']['total_spent']}
+            Remaining: ₹{context['financial_overview']['remaining_budget']}
+            Days left in month: {context['time_info']['days_left_in_month']}
+            
+            Focus on whatever insight would be most valuable based on their data.
             Be specific and actionable in your advice.
             
             Respond with:
@@ -192,13 +258,22 @@ async def generate_ai_notification(
                         message_lines = [line.replace("Message:", "").strip() for line in lines if line.startswith("Message:") or not line.startswith("Title:")]
                         message = " ".join(message_lines).strip()
                     
+                    # Determine status based on notification type
+                    status = "info"
+                    if notification_type == "spending_alert":
+                        status = "alert"
+                    elif notification_type == "activity_reminder":
+                        status = "reminder"
+                    elif notification_type == "goal_progress" and "achieved" in message.lower():
+                        status = "completed"
+                    
                     # Create notification
                     notification = NotificationCreate(
                         user_id=user_id,
                         title=title[:100],  # Allow longer titles
                         message=message[:500],  # Allow longer messages
                         type=notification_type,
-                        status="info",
+                        status=status,
                         category_id=context.get("category_id")
                     )
                     notification_obj = await create_notification(db, notification)
