@@ -10,13 +10,27 @@ from typing import AsyncGenerator
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+# Engine configuration - start with your existing settings
+engine_kwargs = {
+    "echo": False,
+    "future": True,
+    "pool_pre_ping": True,    # Check connection before using
+    "pool_recycle": 300,      # Recycle connections after 5 minutes
+}
+
+# Add Supabase-specific configuration to fix prepared statement issues
+if settings.is_supabase:
+    # Disable prepared statements for Supabase/PgBouncer compatibility
+    engine_kwargs["connect_args"] = {
+        "statement_cache_size": 0,
+        "prepared_statement_cache_size": 0,
+    }
+    logger.info("🔧 Configured engine for Supabase with disabled prepared statements")
+
 # Create the async engine with improved connection handling
 engine = create_async_engine(
     settings.DATABASE_URL,  # Direct use since we have the right format
-    echo=False,
-    future=True,
-    pool_pre_ping=True,    # Check connection before using
-    pool_recycle=300,      # Recycle connections after 5 minutes
+    **engine_kwargs
 )
 
 # AsyncSession factory using async_sessionmaker

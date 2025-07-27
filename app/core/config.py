@@ -53,6 +53,11 @@ class Settings(BaseSettings):
     # Optional: Environment
     ENVIRONMENT: str = "development"
     
+    @property
+    def is_supabase(self) -> bool:
+        """Check if we're using Supabase database"""
+        return "supabase.com" in self.DATABASE_URL
+    
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         # Debug print to verify settings are loaded

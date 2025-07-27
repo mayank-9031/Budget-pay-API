@@ -1,5 +1,6 @@
 # alembic/env.py
 import asyncio
+import os
 from logging.config import fileConfig
 from sqlalchemy import pool
 from sqlalchemy.engine import Connection
@@ -25,6 +26,11 @@ config = context.config
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
+# Override the sqlalchemy.url from alembic.ini with our settings
+# This allows us to use environment variables
+database_url = str(settings.DATABASE_URL)
+config.set_main_option("sqlalchemy.url", database_url)
+
 # add your model's MetaData object here
 # for 'autogenerate' support
 target_metadata = Base.metadata
@@ -47,7 +53,7 @@ def run_migrations_offline() -> None:
     script output.
 
     """
-    url = str(settings.DATABASE_URL)
+    url = config.get_main_option("sqlalchemy.url")
     context.configure(
         url=url,
         target_metadata=target_metadata,
@@ -71,8 +77,19 @@ async def run_async_migrations() -> None:
     and associate a connection with the context.
 
     """
+    # For Alembic, we need to convert async URL to sync URL
+    # because Alembic migrations run synchronously even with async setup
+    database_url = str(settings.DATABASE_URL)
+    
+    # Convert async URL to sync for Alembic operations
+    if database_url.startswith("postgresql+asyncpg://"):
+        sync_url = database_url.replace("postgresql+asyncpg://", "postgresql://")
+    else:
+        sync_url = database_url
+    
+    # Create async engine but use sync URL for migrations
     connectable = create_async_engine(
-        str(settings.DATABASE_URL),
+        sync_url.replace("postgresql://", "postgresql+asyncpg://"),
         poolclass=pool.NullPool,
     )
 
