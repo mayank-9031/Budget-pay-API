@@ -62,7 +62,7 @@ async def google_callback(
     """
     Handle Google OAuth callback
     """
-    # Check for errors
+    # Check for error
     if error:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
