@@ -96,6 +96,8 @@ origins = [
     "http://localhost:3000",  # Local development
     "http://localhost:3001",  # Backup local port
     "https://v0-budget-pay-ui-design.vercel.app",  # Your current deployed frontend
+    "https://www.budgetpay.in",
+    "https://budgetpay.in"
 ]
 
 app.add_middleware(
