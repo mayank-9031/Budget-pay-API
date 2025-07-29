@@ -33,7 +33,7 @@ from fastapi.openapi.utils import get_openapi
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Create all tables on startup (for MVP—later, use Alembic migrations)
+# Create all tables on startup (for MVP—later, use Alembic migration)
 async def create_db_and_tables():
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
