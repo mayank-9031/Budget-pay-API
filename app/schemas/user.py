@@ -15,7 +15,7 @@ class UserRead(BaseModel):
     is_superuser: bool
 
     class Config:
-        from_attributes = True
+        orm_mode = True
 
 # Fields accepted on PATCH /users/me
 class UserUpdate(BaseModel):
@@ -25,7 +25,7 @@ class UserUpdate(BaseModel):
     savings_goal_deadline: Optional[datetime]
 
     class Config:
-        from_attributes = True
+        orm_mode = True
 
 class GoogleAuthRequest(BaseModel):
     redirect_uri: Optional[str] = None

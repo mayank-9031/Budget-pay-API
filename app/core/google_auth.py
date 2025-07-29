@@ -50,33 +50,17 @@ async def get_google_user_info(access_token: str) -> Dict:
         response.raise_for_status()
         return response.json()
 
-async def exchange_code_for_token(code: str, redirect_uri: Optional[str] = None) -> Tuple[str, str, Dict]:
-    """Exchange authorization code for access token and refresh token"""
+async def exchange_code_for_token(code: str, redirect_uri: Optional[str] = None) -> Tuple[str, Dict]:
+    """Exchange authorization code for access token"""
     flow = create_oauth_flow(redirect_uri)
     
     # Exchange the authorization code for credentials
-    token_info = flow.fetch_token(code=code)
+    flow.fetch_token(code=code)
     
-    # Get credentials and refresh token
+    # Get credentials
     credentials = flow.credentials
-    refresh_token = token_info.get('refresh_token')
     
     # Get user info
     user_info = await get_google_user_info(credentials.token)
     
-    return credentials.token, refresh_token, user_info
-
-async def refresh_google_token(refresh_token: str) -> Tuple[str, Optional[str]]:
-    """Use refresh token to get a new access token"""
-    async with httpx.AsyncClient() as client:
-        data = {
-            'client_id': settings.GOOGLE_CLIENT_ID,
-            'client_secret': settings.GOOGLE_CLIENT_SECRET,
-            'refresh_token': refresh_token,
-            'grant_type': 'refresh_token'
-        }
-        response = await client.post(GOOGLE_TOKEN_URL, data=data)
-        response.raise_for_status()
-        token_info = response.json()
-        
-        return token_info['access_token'], token_info.get('refresh_token') 
+    return credentials.token, user_info 

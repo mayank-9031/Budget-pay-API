@@ -1,9 +1,6 @@
 # app/api/v1/routes/google_auth.py
 import uuid
-import logging
-import jwt
-from datetime import datetime, timedelta, timezone
-from zoneinfo import ZoneInfo
+from datetime import datetime, timedelta
 from typing import Optional, Dict, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status, Security
@@ -12,78 +9,13 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-# Configure logging
-logger = logging.getLogger(__name__)
-
 from app.core.auth import User, get_user_manager, UserManager, create_access_token
 from app.core.database import get_async_session
-from app.core.google_auth import create_oauth_flow, exchange_code_for_token, refresh_google_token
+from app.core.google_auth import create_oauth_flow, exchange_code_for_token
 from app.schemas.user import GoogleAuthRequest, GoogleAuthResponse
 from app.core.config import settings
 
 router = APIRouter()
-
-# Define security scheme
-security = HTTPBearer()
-
-@router.post("/refresh-token")
-async def refresh_google_access_token(
-    request: Request,
-    db: AsyncSession = Depends(get_async_session),
-    credentials: HTTPAuthorizationCredentials = Security(security)
-) -> Dict[str, Any]:
-    """
-    Refresh Google access token using the stored refresh token.
-    Requires authentication.
-    """
-    try:
-        # Get user ID from JWT token
-        secret_key = str(settings.SECRET_KEY) if hasattr(settings.SECRET_KEY, "get_secret_value") else settings.SECRET_KEY
-        payload = jwt.decode(credentials.credentials, secret_key, algorithms=[settings.ALGORITHM])
-        user_id = payload.get("sub")
-
-        # Get user from database
-        result = await db.execute(select(User).where(User.id == user_id))
-        user = result.scalars().first()
-        
-        if not user or not user.google_refresh_token:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="User not found or not connected to Google"
-            )
-            
-        # Refresh the token
-        new_access_token, new_refresh_token = await refresh_google_token(user.google_refresh_token)
-        
-        # Update user's tokens
-        user.google_access_token = new_access_token
-        if new_refresh_token:
-            user.google_refresh_token = new_refresh_token
-        user.google_token_expiry = datetime.utcnow() + timedelta(hours=1)
-        
-        await db.commit()
-        
-        return {
-            "status": "success",
-            "message": "Google token refreshed successfully",
-            "token_expiry": user.google_token_expiry.isoformat()
-        }
-        
-    except jwt.ExpiredSignatureError:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Token has expired",
-        )
-    except jwt.InvalidTokenError:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid token",
-        )
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to refresh token: {str(e)}"
-        )
 
 # Define security scheme
 security = HTTPBearer()
@@ -138,8 +70,8 @@ async def google_callback(
         )
     
     try:
-        # Exchange code for tokens
-        access_token, refresh_token, user_info = await exchange_code_for_token(code)
+        # Exchange code for token
+        access_token, user_info = await exchange_code_for_token(code)
         
         # Get user email from Google profile
         email = user_info.get("email")
@@ -164,7 +96,6 @@ async def google_callback(
                 full_name=user_info.get("name"),
                 google_id=user_info.get("sub"),
                 google_access_token=access_token,
-                google_refresh_token=refresh_token,
                 google_token_expiry=datetime.utcnow() + timedelta(hours=1)
             )
             db.add(new_user)
@@ -179,8 +110,7 @@ async def google_callback(
                 .values(
                     google_id=user_info.get("sub"),
                     google_access_token=access_token,
-                    google_refresh_token=refresh_token,
-                    google_token_expiry=datetime.now(ZoneInfo("Asia/Kolkata")) + timedelta(minutes=settings.GOOGLE_TOKEN_EXPIRE_MINUTES),
+                    google_token_expiry=datetime.utcnow() + timedelta(hours=1),
                     full_name=user_info.get("name") if user_info.get("name") else user.full_name
                 )
             )
@@ -292,24 +222,6 @@ async def verify_token(
                 headers={"WWW-Authenticate": "Bearer"},
             )
         
-        # For Google users, check if access token needs refresh
-        if user.google_refresh_token and user.google_token_expiry:
-            if datetime.utcnow() >= user.google_token_expiry:
-                try:
-                    # Refresh Google token
-                    new_access_token, new_refresh_token = await refresh_google_token(user.google_refresh_token)
-                    
-                    # Update user's tokens
-                    user.google_access_token = new_access_token
-                    if new_refresh_token:
-                        user.google_refresh_token = new_refresh_token
-                    user.google_token_expiry = datetime.now(ZoneInfo("Asia/Kolkata")) + timedelta(minutes=settings.GOOGLE_TOKEN_EXPIRE_MINUTES)
-                    
-                    await db.commit()
-                except Exception as e:
-                    logger.error(f"Failed to refresh Google token: {str(e)}")
-                    # Continue even if refresh fails, user can still use the app
-        
         # Return user info
         return {
             "authenticated": True,
@@ -318,7 +230,6 @@ async def verify_token(
             "full_name": user.full_name,
             "is_active": user.is_active,
             "is_verified": user.is_verified,
-            "google_connected": bool(user.google_refresh_token)
         }
     except jwt.ExpiredSignatureError:
         raise HTTPException(
