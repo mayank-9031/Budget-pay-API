@@ -4,7 +4,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from typing import List
 import uuid
 
-from app.schemas.category import CategoryCreate, CategoryRead, CategoryUpdate
+from app.schemas.category import CategoryCreate, Category, CategoryUpdate
 from app.crud.category import (
     create_category_for_user,
     get_categories_for_user,
@@ -18,7 +18,7 @@ from app.api.deps import get_current_user
 
 router = APIRouter(prefix="/categories", tags=["categories"])
 
-@router.get("", response_model=List[CategoryRead])
+@router.get("", response_model=List[Category])
 async def read_categories(
     request: Request,
     db: AsyncSession = Depends(get_async_session),
@@ -29,7 +29,7 @@ async def read_categories(
     categories = await get_categories_for_user(user_id, db)
     return categories
 
-@router.post("", response_model=CategoryRead, status_code=status.HTTP_201_CREATED)
+@router.post("", response_model=Category, status_code=status.HTTP_201_CREATED)
 async def create_category(
     cat_in: CategoryCreate,
     request: Request,
@@ -40,7 +40,7 @@ async def create_category(
     user_id = uuid.UUID(str(user.id))
     return await create_category_for_user(user_id, cat_in, db)
 
-@router.get("/{category_id}", response_model=CategoryRead)
+@router.get("/{category_id}", response_model=Category)
 async def read_category(
     category_id: uuid.UUID,
     request: Request,
@@ -54,7 +54,7 @@ async def read_category(
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Category not found")
     return category
 
-@router.patch("/{category_id}", response_model=CategoryRead)
+@router.patch("/{category_id}", response_model=Category)
 async def update_category_endpoint(
     category_id: uuid.UUID,
     cat_in: CategoryUpdate,

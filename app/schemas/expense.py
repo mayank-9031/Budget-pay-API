@@ -31,4 +31,4 @@ class ExpenseRead(ExpenseBase):
     user_id: uuid.UUID
 
     class Config:
-        orm_mode = True
+        from_attributes = True

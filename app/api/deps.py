@@ -31,35 +31,46 @@ async def get_current_user(
     - Query parameters
     - Cookies
     """
-    # Try to get token from various sources
-    auth_header = request.headers.get("Authorization", "")
-    token = None
+    try:
+        # Try to get token from various sources
+        auth_header = request.headers.get("Authorization", "")
+        token = None
+        
+        # From Authorization header
+        if auth_header.startswith("Bearer "):
+            token = auth_header[7:]  # Remove "Bearer " prefix
+        elif credentials and credentials.credentials:
+            token = credentials.credentials
+        
+        # From query parameter
+        if not token:
+            token = request.query_params.get("token") or request.query_params.get("access_token")
+        
+        # From cookie
+        if not token:
+            token = request.cookies.get("access_token")
+            # Remove "Bearer " prefix if present in cookie
+            if token and token.startswith("Bearer "):
+                token = token[7:]
+        
+        if not token:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Not authenticated",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+        
+        return await get_current_user_from_token(token, db)
     
-    # From Authorization header
-    if auth_header.startswith("Bearer "):
-        token = auth_header[7:]  # Remove "Bearer " prefix
-    elif credentials and credentials.credentials:
-        token = credentials.credentials
-    
-    # From query parameter
-    if not token:
-        token = request.query_params.get("token") or request.query_params.get("access_token")
-    
-    # From cookie
-    if not token:
-        token = request.cookies.get("access_token")
-        # Remove "Bearer " prefix if present in cookie
-        if token and token.startswith("Bearer "):
-            token = token[7:]
-    
-    if not token:
+    except HTTPException:
+        # Re-raise HTTP exceptions as-is
+        raise
+    except Exception as e:
+        # Handle any other unexpected errors
         raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Not authenticated",
-            headers={"WWW-Authenticate": "Bearer"},
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Authentication service error: {str(e)}",
         )
-    
-    return await get_current_user_from_token(token, db)
 
 async def get_current_user_from_token(token: str, db: AsyncSession) -> User:
     """

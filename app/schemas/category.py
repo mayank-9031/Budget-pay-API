@@ -4,11 +4,11 @@ from pydantic import BaseModel, Field
 import uuid
 
 class CategoryBase(BaseModel):
-    name: str = Field(..., description="Category name, e.g. Food, Transport")
-    description: Optional[str]
-    default_percentage: Optional[float] = Field(..., description="Suggested percent allocation (0–100)")
-    custom_percentage: Optional[float] = Field(None, description="User override % (0–100)")
-    is_default: Optional[bool] = False
+    name: str
+    description: Optional[str] = None
+    budget_limit: Optional[float] = None
+    color: Optional[str] = None
+    icon: Optional[str] = None
     is_fixed: Optional[bool] = False
 
 class CategoryCreate(CategoryBase):
@@ -17,19 +17,26 @@ class CategoryCreate(CategoryBase):
 class CategoryUpdate(BaseModel):
     name: Optional[str] = None
     description: Optional[str] = None
-    default_percentage: Optional[float] = None
-    custom_percentage: Optional[float] = None
-    is_default: Optional[bool] = None
+    budget_limit: Optional[float] = None
+    color: Optional[str] = None
+    icon: Optional[str] = None
     is_fixed: Optional[bool] = None
 
-    class Config:
-        # Only fields provided in the request will be validated/used
-        extra = "ignore"
-        orm_mode = True
-
-class CategoryRead(CategoryBase):
-    id: uuid.UUID
-    user_id: uuid.UUID
+class Category(CategoryBase):
+    id: int
+    user_id: str
 
     class Config:
-        orm_mode = True
+        from_attributes = True
+
+class CategoryResponse(BaseModel):
+    id: int
+    name: str
+    description: Optional[str] = None
+    budget_limit: Optional[float] = None
+    color: Optional[str] = None
+    icon: Optional[str] = None
+    is_fixed: bool = False
+
+    class Config:
+        from_attributes = True

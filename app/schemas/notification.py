@@ -24,4 +24,4 @@ class NotificationRead(NotificationBase):
     category_id: Optional[uuid.UUID]
 
     class Config:
-        orm_mode = True 
+        from_attributes = True 
