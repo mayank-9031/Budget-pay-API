@@ -187,11 +187,12 @@ async def verify_token(
         # Convert SecretStr to str if needed
         secret_key = str(settings.SECRET_KEY) if hasattr(settings.SECRET_KEY, "get_secret_value") else settings.SECRET_KEY
         
-        # Decode the token
+        # Decode the token with audience validation
         payload = jwt.decode(
             token,
             secret_key,
-            algorithms=[settings.ALGORITHM]
+            algorithms=[settings.ALGORITHM],
+            audience=["fastapi-users:auth"]  # Match the audience set by FastAPI Users
         )
         
         # Check if token is expired

@@ -89,6 +89,7 @@ def create_access_token(subject: str, expires_delta: Optional[timedelta] = None)
         "sub": subject,
         "exp": expire,
         "iat": datetime.utcnow(),
+        "aud": ["fastapi-users:auth"]  # Add audience to match what fastapi-users expects
     }
     
     # Convert SecretStr to str if needed
