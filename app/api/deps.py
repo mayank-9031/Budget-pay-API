@@ -84,7 +84,8 @@ async def get_current_user_from_token(token: str, db: AsyncSession) -> User:
         payload = jwt.decode(
             token,
             secret_key,
-            algorithms=[settings.ALGORITHM]
+            algorithms=[settings.ALGORITHM],
+            audience=["fastapi-users:auth"]  # Match the audience set by FastAPI Users
         )
         
         # Get user ID from token

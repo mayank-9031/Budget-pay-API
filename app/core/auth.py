@@ -441,7 +441,8 @@ def get_jwt_strategy() -> JWTStrategy:
     # Use the ACCESS_TOKEN_EXPIRE_MINUTES from settings (10080 minutes = 7 days)
     return JWTStrategy(
         secret=secret_key, 
-        lifetime_seconds=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60
+        lifetime_seconds=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
+        token_audience=["fastapi-users:auth"]  # Explicitly set audience
     )
 
 auth_backend = AuthenticationBackend(
