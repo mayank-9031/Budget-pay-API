@@ -25,11 +25,11 @@ class CategoryUpdate(BaseModel):
     class Config:
         # Only fields provided in the request will be validated/used
         extra = "ignore"
-        orm_mode = True
+        from_attributes = True
 
 class CategoryRead(CategoryBase):
     id: uuid.UUID
     user_id: uuid.UUID
 
     class Config:
-        orm_mode = True
+        from_attributes = True

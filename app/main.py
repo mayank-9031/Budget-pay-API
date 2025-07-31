@@ -41,7 +41,9 @@ async def create_db_and_tables():
 app = FastAPI(
     title="Budget Pay API",
     version="1.1.0",
-    openapi_url="/openapi.json",
+    openapi_url="/s3cret-ap1-budget/openapi.json",
+    docs_url="/s3cret-ap1-budget/docs",
+    redoc_url="/s3cret-ap1-budget/redoc",
     openapi_tags=[
         {"name": "Authentication", "description": "Operations related to authentication"},
         {"name": "Google Authentication", "description": "Google OAuth authentication endpoints"},
@@ -204,24 +206,7 @@ async def root():
     """Root endpoint with API information"""
     return {
         "message": "Budget Pay API is running!",
-        "version": "1.1.0",
-        "docs": "/docs",
-        "redoc": "/redoc",
-        "endpoints": {
-            "register": "/api/v1/auth/register",
-            "login": "/api/v1/auth/jwt/login",
-            "logout": "/api/v1/auth/jwt/logout",
-            "profile": "/api/v1/users/me",
-            "notifications": "/api/v1/notification",
-            "notification_ws": "/api/v1/notification/ws",
-        },
-        "features": {
-            "email_verification": True,
-            "password_reset": True,
-            "jwt_authentication": True,
-            "real_time_notifications": True,
-            "ai_notifications": True
-        }
+        "version": "1.1.0"
     }
 
 # ------------------------------------------------------------
@@ -234,7 +219,7 @@ async def health_check():
         # You can add database connectivity check here
         return {
             "status": "healthy",
-            "timestamp": "2025-06-25T00:00:00Z",
+            "timestamp": "2025-08-02T00:00:00Z",
             "version": "1.1.0",
             "environment": settings.ENVIRONMENT
         }
