@@ -3,6 +3,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 import json
 import httpx
 import os
+import logging
+
+logger = logging.getLogger(__name__)
 from collections import defaultdict
 import uuid
 import asyncio
@@ -20,9 +23,9 @@ import calendar
 
 router = APIRouter()
 
-# Model ID for OpenRouter - using a valid model that works
-OPENROUTER_MODEL_ID = "meta-llama/llama-3.2-3b-instruct"
-# OPENROUTER_MODEL_ID = "deepseek/deepseek-chat-v3-0324:free"
+# Model IDs for OpenRouter
+PRIMARY_MODEL = "meta-llama/llama-3.2-3b-instruct"
+FALLBACK_MODEL = "deepseek/deepseek-chat-v3-0324:free"
 
 @router.post("/ask", response_model=ChatbotResponse)
 async def ask_chatbot(
@@ -98,7 +101,7 @@ async def ask_chatbot(
         Always format currency values using the ₹ symbol (e.g., ₹5,000).
         """
         
-        # Use OpenRouter API with a valid Llama model
+        # Use OpenRouter API with fallback model support
         headers = {
             "Authorization": f"Bearer {settings.OPENROUTER_API_KEY}",
             "Content-Type": "application/json",
@@ -106,38 +109,44 @@ async def ask_chatbot(
             "X-Title": "Budget Pay Financial Assistant"  # Optional but recommended
         }
         
-        payload = {
-            "messages": [
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_prompt}
-            ],
-            "model": OPENROUTER_MODEL_ID,  # Use the defined model ID
-            "temperature": 0.1,
-            "max_tokens": 1024
-        }
-        
-        # Use httpx for async HTTP requests with proper error handling
-        client = httpx.AsyncClient(timeout=60.0)
-        try:
-            response = await client.post(
-                "https://openrouter.ai/api/v1/chat/completions",
-                headers=headers,
-                json=payload
-            )
+        async def try_generate_response(model: str) -> dict:
+            payload = {
+                "messages": [
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt}
+                ],
+                "model": model,
+                "temperature": 0.1,
+                "max_tokens": 1024
+            }
             
-            if response.status_code != 200:
+            async with httpx.AsyncClient(timeout=60.0) as client:
+                response = await client.post(
+                    "https://openrouter.ai/api/v1/chat/completions",
+                    headers=headers,
+                    json=payload
+                )
+                
+                if response.status_code == 200:
+                    response_data = response.json()
+                    return {"success": True, "response": response_data["choices"][0]["message"]["content"]}
+                return {"success": False, "error": response.text}
+
+        # Try primary model first
+        result = await try_generate_response(PRIMARY_MODEL)
+        
+        # If primary model fails, try fallback model
+        if not result["success"]:
+            logger.warning(f"Primary model failed: {result['error']}. Trying fallback model...")
+            result = await try_generate_response(FALLBACK_MODEL)
+            
+            if not result["success"]:
                 raise HTTPException(
                     status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                    detail=f"Error from OpenRouter API: {response.text}"
+                    detail=f"Both models failed. Last error: {result['error']}"
                 )
-            
-            # Extract response content
-            response_data = response.json()
-            ai_response = response_data["choices"][0]["message"]["content"]
-            
-            return {"response": ai_response}
-        finally:
-            await client.aclose()
+        
+        return {"response": result["response"]}
         
         # # GROQ Implementation (commented out for future use)
         # # Generate response using Groq API via direct HTTP request

@@ -225,7 +225,7 @@ async def generate_ai_notification(
                     "X-Title": "Budget Pay Notification Generator"  # Optional but recommended
                 },
                 json={
-                    "model": "meta-llama/llama-3.2-3b-instruct",  # Using a more capable model
+                    "model": "meta-llama/llama-3.2-3b-instruct",  # Primary model
                     "messages": [
                         {"role": "system", "content": system_prompt},
                         {"role": "user", "content": user_prompt}
@@ -236,11 +236,46 @@ async def generate_ai_notification(
                 timeout=15.0
             )
             
+            # Try with primary model first
             if response.status_code == 200:
                 result = response.json()
                 ai_message = result.get("choices", [{}])[0].get("message", {}).get("content", "")
-                
-                if ai_message:
+            else:
+                # If primary model fails, try fallback model
+                logger.warning(f"Primary model failed. Trying fallback model deepseek/deepseek-chat-v3-0324:free")
+                try:
+                    response = await client.post(
+                        "https://openrouter.ai/api/v1/chat/completions",
+                        headers={
+                            "Authorization": f"Bearer {settings.OPENROUTER_API_KEY}",
+                            "Content-Type": "application/json",
+                            "HTTP-Referer": settings.BACKEND_BASE_URL,
+                            "X-Title": "Budget Pay Notification Generator"
+                        },
+                        json={
+                            "model": "deepseek/deepseek-chat-v3-0324:free",  # Fallback model
+                            "messages": [
+                                {"role": "system", "content": system_prompt},
+                                {"role": "user", "content": user_prompt}
+                            ],
+                            "temperature": 0.7,
+                            "max_tokens": 256
+                        },
+                        timeout=15.0
+                    )
+                    
+                    if response.status_code == 200:
+                        result = response.json()
+                        ai_message = result.get("choices", [{}])[0].get("message", {}).get("content", "")
+                    else:
+                        logger.error(f"Both models failed. Last error: {response.text}")
+                        return None
+                except Exception as e:
+                    logger.error(f"Error with fallback model: {str(e)}")
+                    return None
+            
+            # Process AI message if we have one
+            if ai_message:
                     # Parse the AI response
                     title = ""
                     message = ""
