@@ -71,12 +71,12 @@ async def exchange_mobile_auth_code(code: str) -> Tuple[str, Dict]:
         # For mobile apps, we use a special redirect_uri value
         token_url = "https://oauth2.googleapis.com/token"
         
-        # Prepare the request data
+        # Prepare the request data - use Android client ID for mobile apps
         data = {
             "code": code,
-            "client_id": settings.GOOGLE_CLIENT_ID,
+            "client_id": settings.GOOGLE_CLIENT_ID_ANDROID,
             "client_secret": settings.GOOGLE_CLIENT_SECRET,
-            "redirect_uri": "postmessage",  # Special value for mobile apps
+            "redirect_uri": "urn:ietf:wg:oauth:2.0:oob",  # For Android apps
             "grant_type": "authorization_code"
         }
         

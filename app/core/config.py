@@ -47,6 +47,7 @@ class Settings(BaseSettings):
     
     # Google OAuth Configuration
     GOOGLE_CLIENT_ID: str = "547765267021-apba8bn0q19n5rsnrsd1m736dh6pri3g.apps.googleusercontent.com"
+    GOOGLE_CLIENT_ID_ANDROID: str = "547765267021-enm7o9t8egbo6o19g8teh06344a3khd6.apps.googleusercontent.com"
     GOOGLE_CLIENT_SECRET: str = ""
     GOOGLE_REDIRECT_URI: str = ""
     

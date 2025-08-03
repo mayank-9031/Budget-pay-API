@@ -4,6 +4,8 @@ from datetime import datetime, timedelta
 from typing import Optional, Dict, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status, Security
+import httpx
+import logging
 from fastapi.responses import RedirectResponse
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy import select, update
@@ -14,6 +16,9 @@ from app.core.database import get_async_session
 from app.core.google_auth import create_oauth_flow, exchange_code_for_token, exchange_mobile_auth_code
 from app.schemas.user import GoogleAuthRequest, GoogleAuthResponse, GoogleMobileAuthRequest
 from app.core.config import settings
+
+# Set up logging
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -203,10 +208,23 @@ async def google_mobile_auth(
             "token_type": "bearer"
         }
         
-    except Exception as e:
+    except ValueError as e:
+        logger.error(f"Google OAuth mobile auth value error: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Google OAuth mobile authentication failed: {str(e)}"
+            detail=f"Google OAuth validation error: {str(e)}"
+        )
+    except httpx.HTTPError as e:
+        logger.error(f"Google OAuth mobile auth HTTP error: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Error communicating with Google: {str(e)}"
+        )
+    except Exception as e:
+        logger.error(f"Google OAuth mobile auth unexpected error: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Unexpected error during authentication: {str(e)}"
         )
 
 @router.get("/verify-token", summary="Verify authentication token", description="Requires a valid JWT token in the Authorization header")
