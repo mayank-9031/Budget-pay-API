@@ -63,4 +63,42 @@ async def exchange_code_for_token(code: str, redirect_uri: Optional[str] = None)
     # Get user info
     user_info = await get_google_user_info(credentials.token)
     
-    return credentials.token, user_info 
+    return credentials.token, user_info
+
+async def exchange_mobile_auth_code(code: str) -> Tuple[str, Dict]:
+    """Exchange server auth code from mobile app for tokens"""
+    try:
+        # For mobile apps, we use a special redirect_uri value
+        token_url = "https://oauth2.googleapis.com/token"
+        
+        # Prepare the request data
+        data = {
+            "code": code,
+            "client_id": settings.GOOGLE_CLIENT_ID,
+            "client_secret": settings.GOOGLE_CLIENT_SECRET,
+            "redirect_uri": "postmessage",  # Special value for mobile apps
+            "grant_type": "authorization_code"
+        }
+        
+        # Make the token request
+        async with httpx.AsyncClient() as client:
+            response = await client.post(token_url, data=data)
+            response.raise_for_status()
+            token_data = response.json()
+        
+        # Extract tokens
+        access_token = token_data.get("access_token")
+        id_token = token_data.get("id_token")
+        
+        if not access_token:
+            raise ValueError("No access token received from Google")
+        
+        # Get user info using the access token
+        user_info = await get_google_user_info(access_token)
+        
+        return access_token, user_info
+        
+    except httpx.HTTPError as e:
+        raise ValueError(f"HTTP error during token exchange: {str(e)}")
+    except Exception as e:
+        raise ValueError(f"Error exchanging mobile auth code: {str(e)}") 

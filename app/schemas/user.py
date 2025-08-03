@@ -38,6 +38,9 @@ class GoogleCallbackRequest(BaseModel):
     state: Optional[str] = None
     error: Optional[str] = None
 
+class GoogleMobileAuthRequest(BaseModel):
+    code: str
+
 class Token(BaseModel):
     access_token: str
     token_type: str

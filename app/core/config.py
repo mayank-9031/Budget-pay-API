@@ -46,7 +46,7 @@ class Settings(BaseSettings):
     OPENROUTER_API_KEY: str = ""  # New: OpenRouter API key
     
     # Google OAuth Configuration
-    GOOGLE_CLIENT_ID: str = ""
+    GOOGLE_CLIENT_ID: str = "547765267021-apba8bn0q19n5rsnrsd1m736dh6pri3g.apps.googleusercontent.com"
     GOOGLE_CLIENT_SECRET: str = ""
     GOOGLE_REDIRECT_URI: str = ""
     

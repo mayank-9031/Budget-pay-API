@@ -206,7 +206,7 @@ async def root():
     """Root endpoint with API information"""
     return {
         "message": "Budget Pay API is running!",
-        "version": "1.1.0"
+        "version": "0.1.0"
     }
 
 # ------------------------------------------------------------

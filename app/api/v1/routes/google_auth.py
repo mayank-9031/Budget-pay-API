@@ -11,8 +11,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import User, get_user_manager, UserManager, create_access_token
 from app.core.database import get_async_session
-from app.core.google_auth import create_oauth_flow, exchange_code_for_token
-from app.schemas.user import GoogleAuthRequest, GoogleAuthResponse
+from app.core.google_auth import create_oauth_flow, exchange_code_for_token, exchange_mobile_auth_code
+from app.schemas.user import GoogleAuthRequest, GoogleAuthResponse, GoogleMobileAuthRequest
 from app.core.config import settings
 
 router = APIRouter()
@@ -135,9 +135,78 @@ async def google_callback(
         
         return response
     except Exception as e:
+        raise
+
+@router.post("/mobile-auth")
+async def google_mobile_auth(
+    request: GoogleMobileAuthRequest,
+    db: AsyncSession = Depends(get_async_session),
+    user_manager: UserManager = Depends(get_user_manager)
+):
+    """
+    Handle Google OAuth authentication for mobile apps
+    """
+    try:
+        # Exchange the server auth code for tokens
+        access_token, user_info = await exchange_mobile_auth_code(request.code)
+        
+        # Get user email from Google profile
+        email = user_info.get("email")
+        if not email:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Email not provided by Google"
+            )
+        
+        # Check if user exists
+        result = await db.execute(select(User).where(User.email == email))
+        user = result.scalars().first()
+        
+        # If user doesn't exist, create a new one
+        if not user:
+            # Create user with Google info
+            new_user = User(
+                email=email,
+                hashed_password="",  # No password for Google users
+                is_active=True,
+                is_verified=True,  # Google already verified the email
+                full_name=user_info.get("name"),
+                google_id=user_info.get("sub"),
+                google_access_token=access_token,
+                google_token_expiry=datetime.utcnow() + timedelta(hours=1)
+            )
+            db.add(new_user)
+            await db.commit()
+            await db.refresh(new_user)
+            user = new_user
+        else:
+            # Update existing user with Google info
+            await db.execute(
+                update(User)
+                .where(User.id == user.id)
+                .values(
+                    google_id=user_info.get("sub"),
+                    google_access_token=access_token,
+                    google_token_expiry=datetime.utcnow() + timedelta(hours=1),
+                    full_name=user_info.get("name") if user_info.get("name") else user.full_name
+                )
+            )
+            await db.commit()
+            await db.refresh(user)
+        
+        # Generate JWT token
+        token = create_access_token(str(user.id))
+        
+        # Return the token directly (no redirect for mobile apps)
+        return {
+            "access_token": token,
+            "token_type": "bearer"
+        }
+        
+    except Exception as e:
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to process Google callback: {str(e)}"
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Google OAuth mobile authentication failed: {str(e)}"
         )
 
 @router.get("/verify-token", summary="Verify authentication token", description="Requires a valid JWT token in the Authorization header")
