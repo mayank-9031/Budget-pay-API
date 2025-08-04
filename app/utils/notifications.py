@@ -225,7 +225,7 @@ async def generate_ai_notification(
                     "X-Title": "Budget Pay Notification Generator"  # Optional but recommended
                 },
                 json={
-                    "model": "meta-llama/llama-3.2-3b-instruct",  # Primary model
+                    "model": "deepseek/deepseek-chat-v3-0324:free",  # Primary model
                     "messages": [
                         {"role": "system", "content": system_prompt},
                         {"role": "user", "content": user_prompt}
@@ -253,7 +253,7 @@ async def generate_ai_notification(
                             "X-Title": "Budget Pay Notification Generator"
                         },
                         json={
-                            "model": "deepseek/deepseek-chat-v3-0324:free",  # Fallback model
+                            "model": "meta-llama/llama-3.2-3b-instruct",  # Fallback model
                             "messages": [
                                 {"role": "system", "content": system_prompt},
                                 {"role": "user", "content": user_prompt}
