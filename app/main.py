@@ -40,7 +40,7 @@ async def create_db_and_tables():
 
 app = FastAPI(
     title="Budget Pay API",
-    version="1.1.0",
+    version="0.1.0",
     openapi_url="/s3cret-ap1-budget/openapi.json",
     docs_url="/s3cret-ap1-budget/docs",
     redoc_url="/s3cret-ap1-budget/redoc",
@@ -216,11 +216,11 @@ async def root():
 async def health_check():
     """Health check endpoint"""
     try:
-        # You can add database connectivity check here
+        # TODO: Add database connectivity check here
         return {
             "status": "healthy",
-            "timestamp": "2025-08-02T00:00:00Z",
-            "version": "1.1.0",
+            "timestamp": "2025-08-06T00:00:00Z",
+            "version": "0.1.0",
             "environment": settings.ENVIRONMENT
         }
     except Exception as e:
