@@ -54,7 +54,10 @@ async def calculate_goal_progress(
     # Post-processing
     result["status"]              = determine_status(result["progress_percentage"],
                                                      period, today, journey_start)
-    result["percentage_of_income"] = (monthly_goal / monthly_income) * 100
+    
+    # FIX: Handle division by zero for percentage_of_income
+    result["percentage_of_income"] = (monthly_goal / monthly_income * 100) if monthly_income > 0 else 0.0
+    
     result["journey_start_date"]   = journey_start
     result["days_in_journey"]      = (today - journey_start).days + 1
 
@@ -131,8 +134,11 @@ def _weekly_progress(monthly_income: float, monthly_goal: float,
     daily_target  = monthly_goal   / dim
 
     days_elapsed       = (today - effective_start).days + 1
+    # CHANGED: Use remaining days from journey start to week end
+    days_from_start_to_end = (week_end - effective_start).days + 1
+    
     budget_till_now    = daily_income  * days_elapsed
-    target_amount      = daily_target * days_elapsed
+    target_amount      = daily_target * days_from_start_to_end  # CHANGED
     saved_amount       = budget_till_now - weekly_expenses
     progress_pct       = (saved_amount / target_amount) * 100 if target_amount else 0
     remaining_amt      = max(0, target_amount - saved_amount)
@@ -167,8 +173,11 @@ def _monthly_progress(monthly_income: float, monthly_goal: float,
     daily_target   = monthly_goal   / dim
 
     days_elapsed   = (today - effective_start).days + 1
+    # CHANGED: Use remaining days from journey start to month end
+    days_from_start_to_end = (month_end - effective_start).days + 1
+    
     budget_till_now = daily_income  * days_elapsed
-    target_amount   = daily_target * days_elapsed
+    target_amount   = daily_target * days_from_start_to_end  # CHANGED
     saved_amount    = budget_till_now - monthly_expenses
     progress_pct    = (saved_amount / target_amount) * 100 if target_amount else 0
     remaining_amt   = max(0, target_amount - saved_amount)
@@ -203,8 +212,11 @@ async def _yearly_progress(monthly_income: float, monthly_goal: float,
     daily_target     = (monthly_goal   * 12) / days_in_year
 
     days_elapsed     = (today - effective_start).days + 1
+    # CHANGED: Use remaining days from journey start to year end
+    days_from_start_to_end = (year_end - effective_start).days + 1
+    
     budget_till_now  = daily_income  * days_elapsed
-    target_amount    = daily_target * days_elapsed
+    target_amount    = daily_target * days_from_start_to_end  # CHANGED
 
     # expenses since journey_start (within this year)
     transactions = await get_period_transactions(db, user_id, "yearly",
