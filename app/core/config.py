@@ -57,7 +57,12 @@ class Settings(BaseSettings):
     @property
     def is_supabase(self) -> bool:
         """Check if we're using Supabase database"""
-        return "supabase.com" in self.DATABASE_URL
+        # Cover both to ensure DB engine gets the right settings
+        return any(d in self.DATABASE_URL for d in [
+            "supabase.co",
+            "supabase.com",
+            "pooler.supabase",
+        ])
     
     def __init__(self, **kwargs):
         super().__init__(**kwargs)

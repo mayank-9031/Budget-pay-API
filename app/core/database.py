@@ -14,6 +14,10 @@ logger = logging.getLogger(__name__)
 engine_kwargs = {
     "echo": False,
     "future": True,
+    # Keep the pool small but responsive on Render starter instances
+    "pool_size": 5,
+    "max_overflow": 5,
+    "pool_timeout": 30,       # Seconds to wait for a free connection
     "pool_pre_ping": True,    # Check connection before using
     "pool_recycle": 300,      # Recycle connections after 5 minutes
 }
@@ -21,11 +25,17 @@ engine_kwargs = {
 # Add Supabase-specific configuration to fix prepared statement issues
 if settings.is_supabase:
     # Disable prepared statements for Supabase/PgBouncer compatibility
-    engine_kwargs["connect_args"] = {
+    # Also set an explicit connect timeout to fail fast instead of hanging.
+    connect_args = {
         "statement_cache_size": 0,
         "prepared_statement_cache_size": 0,
+        "timeout": 10,  # seconds for asyncpg connect
     }
-    logger.info("🔧 Configured engine for Supabase with disabled prepared statements")
+    # Preserve any pre-existing connect_args
+    existing = engine_kwargs.get("connect_args", {})
+    existing.update(connect_args)
+    engine_kwargs["connect_args"] = existing
+    logger.info("🔧 Configured engine for Supabase/PgBouncer (prepared statements disabled, connect timeout set)")
 
 # Create the async engine with improved connection handling
 engine = create_async_engine(

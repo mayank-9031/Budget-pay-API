@@ -29,6 +29,8 @@ from app.api.v1.routes import (
     goals,
 )
 from fastapi.openapi.utils import get_openapi
+from sqlalchemy import text
+from app.core.database import AsyncSessionLocal
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -216,12 +218,12 @@ async def root():
 async def health_check():
     """Health check endpoint"""
     try:
-        # TODO: Add database connectivity check here
+        async with AsyncSessionLocal() as session:
+            await session.execute(text("SELECT 1"))
         return {
             "status": "healthy",
-            "timestamp": "2025-08-06T00:00:00Z",
             "version": "0.1.0",
-            "environment": settings.ENVIRONMENT
+            "environment": settings.ENVIRONMENT,
         }
     except Exception as e:
         raise HTTPException(status_code=503, detail=f"Service unhealthy: {str(e)}")
