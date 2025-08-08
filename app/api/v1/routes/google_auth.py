@@ -320,6 +320,7 @@ async def verify_token(
             "is_verified": user.is_verified,
         }
     except jwt.ExpiredSignatureError:
+        # True expiry: let client refresh / relogin
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Token has expired",
@@ -332,8 +333,8 @@ async def verify_token(
             headers={"WWW-Authenticate": "Bearer"},
         )
     except Exception as e:
+        # Server-side/DB errors should not be treated as logout conditions by the client
         raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail=f"Authentication error: {str(e)}",
-            headers={"WWW-Authenticate": "Bearer"},
-        ) 
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=f"Authentication backend unavailable: {str(e)}",
+        )

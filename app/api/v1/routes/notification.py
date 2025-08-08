@@ -8,7 +8,7 @@ from app.crud import transaction as crud_transaction
 from app.crud import category as crud_category
 from app.api import deps
 from uuid import UUID
-from app.core.database import get_async_session
+from app.core.database import get_async_session, AsyncSessionLocal
 from app.utils.notifications import connect_user, disconnect_user, generate_ai_notification
 from app.core.auth import User
 from app.crud import user as crud_user
@@ -399,12 +399,12 @@ async def generate_budget_insight(
 async def websocket_endpoint(
     websocket: WebSocket,
     token: str = Query(...),
-    db: AsyncSession = Depends(get_async_session)
 ):
     """WebSocket endpoint for real-time notifications"""
     try:
-        # Authenticate user from token
-        user = await deps.get_current_user_from_token(token, db)
+        # Authenticate user from token using a short-lived DB session
+        async with AsyncSessionLocal() as session:
+            user = await deps.get_current_user_from_token(token, session)
         if not user:
             await websocket.close(code=4001, reason="Authentication failed")
             return

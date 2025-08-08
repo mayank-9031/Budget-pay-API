@@ -15,8 +15,8 @@ engine_kwargs = {
     "echo": False,
     "future": True,
     # Keep the pool small but responsive on Render starter instances
-    "pool_size": 5,
-    "max_overflow": 5,
+    "pool_size": 8,
+    "max_overflow": 8,
     "pool_timeout": 30,       # Seconds to wait for a free connection
     "pool_pre_ping": True,    # Check connection before using
     "pool_recycle": 300,      # Recycle connections after 5 minutes
