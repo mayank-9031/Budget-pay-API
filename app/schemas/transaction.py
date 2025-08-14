@@ -1,5 +1,5 @@
 # app/schemas/transaction.py
-from typing import Optional
+from typing import List, Optional
 from pydantic import BaseModel, Field
 from datetime import datetime
 import uuid
@@ -25,3 +25,10 @@ class TransactionRead(TransactionBase):
 
     class Config:
         from_attributes = True
+
+
+class TransactionImportResult(BaseModel):
+    created_count: int
+    skipped_count: int
+    created: List[TransactionRead]
+    skipped_reasons: List[str] = []

@@ -1,11 +1,11 @@
 # app/crud/transaction.py
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
+from sqlalchemy import desc, and_, func
 from app.models.transaction import Transaction
-from typing import List, Optional
+from typing import Iterable, List, Optional
 import uuid
 from app.schemas.transaction import TransactionCreate, TransactionUpdate
-from sqlalchemy import desc
 
 async def get_transactions_for_user(user_id: uuid.UUID, db: AsyncSession) -> List[Transaction]:
     result = await db.execute(select(Transaction).where(Transaction.user_id == user_id))
@@ -45,3 +45,41 @@ async def update_transaction(tx: Transaction, tx_in: TransactionUpdate, db: Asyn
 async def delete_transaction(tx: Transaction, db: AsyncSession) -> None:
     await db.delete(tx)
     await db.commit()
+
+
+async def bulk_create_transactions_for_user(
+    user_id: uuid.UUID,
+    tx_inputs: Iterable[TransactionCreate],
+    db: AsyncSession,
+) -> List[Transaction]:
+    """Efficiently inserts many transactions for a user."""
+    new_instances: List[Transaction] = []
+    for tx_in in tx_inputs:
+        new_instances.append(Transaction(**tx_in.dict(), user_id=user_id))
+    if not new_instances:
+        return []
+    db.add_all(new_instances)
+    await db.commit()
+    # refresh individually to return with IDs
+    for inst in new_instances:
+        await db.refresh(inst)
+    return new_instances
+
+
+async def transaction_exists(
+    user_id: uuid.UUID,
+    description: str,
+    amount: float,
+    transaction_date,
+    db: AsyncSession,
+) -> bool:
+    q = select(Transaction).where(
+        and_(
+            Transaction.user_id == user_id,
+            func.lower(Transaction.description) == func.lower(description),
+            Transaction.amount == amount,
+            Transaction.transaction_date == transaction_date,
+        )
+    )
+    res = await db.execute(q)
+    return res.scalar_one_or_none() is not None

@@ -1,6 +1,7 @@
 # app/crud/category.py
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
+from sqlalchemy import func
 from app.models.category import Category
 from typing import List, Optional
 import uuid
@@ -34,3 +35,14 @@ async def update_category(category: Category, cat_in: CategoryUpdate, db: AsyncS
 async def delete_category(category: Category, db: AsyncSession) -> None:
     await db.delete(category)
     await db.commit()
+
+
+async def get_category_by_name_for_user(name: str, user_id: uuid.UUID, db: AsyncSession) -> Optional[Category]:
+    """Case-insensitive lookup of a category by name for a given user."""
+    result = await db.execute(
+        select(Category).where(
+            Category.user_id == user_id,
+            func.lower(Category.name) == func.lower(name),
+        )
+    )
+    return result.scalar_one_or_none()
