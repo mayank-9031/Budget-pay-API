@@ -27,8 +27,9 @@ import asyncio
 from concurrent.futures import ThreadPoolExecutor
 import jwt
 
-from .database import Base, get_async_session
+from .database import Base, get_async_session, AsyncSessionLocal
 from .config import settings
+from app.crud.category import seed_default_categories_for_user
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
@@ -205,6 +206,14 @@ class UserManager(UUIDIDMixin, BaseUserManager[User, uuid.UUID]):
             
         except Exception as e:
             logger.error(f"❌ Error during user registration verification for {user.email}: {str(e)}")
+
+        # Seed default categories for the new user (idempotent)
+        try:
+            async with AsyncSessionLocal() as session:
+                await seed_default_categories_for_user(user.id, session)
+                logger.info(f"Default categories ensured for {user.email}")
+        except Exception as e:
+            logger.error(f"❌ Failed to seed default categories for {user.email}: {str(e)}")
 
     async def verify(self, token: str, request: Optional[Request] = None) -> User:
         """Custom verify method with better error handling"""

@@ -16,6 +16,7 @@ from app.core.database import get_async_session
 from app.core.google_auth import create_oauth_flow, exchange_code_for_token, exchange_mobile_auth_code
 from app.schemas.user import GoogleAuthRequest, GoogleAuthResponse, GoogleMobileAuthRequest
 from app.core.config import settings
+from app.crud.category import seed_default_categories_for_user
 
 # Set up logging
 logger = logging.getLogger(__name__)
@@ -107,6 +108,8 @@ async def google_callback(
             await db.commit()
             await db.refresh(new_user)
             user = new_user
+            # Seed default categories for new Google user
+            await seed_default_categories_for_user(user.id, db)
         else:
             # Update existing user with Google info
             await db.execute(
@@ -184,6 +187,8 @@ async def google_mobile_auth(
             await db.commit()
             await db.refresh(new_user)
             user = new_user
+            # Seed default categories for new Google mobile user
+            await seed_default_categories_for_user(user.id, db)
         else:
             # Update existing user with Google info
             await db.execute(

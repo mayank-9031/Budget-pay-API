@@ -163,45 +163,6 @@ async def ask_chatbot(
         
         return {"response": result["response"]}
         
-        # # GROQ Implementation (commented out for future use)
-        # # Generate response using Groq API via direct HTTP request
-        # headers = {
-        #     "Authorization": f"Bearer {settings.GROQ_API_KEY}",
-        #     "Content-Type": "application/json"
-        # }
-        # 
-        # payload = {
-        #     "messages": [
-        #         {"role": "system", "content": system_prompt},
-        #         {"role": "user", "content": user_prompt}
-        #     ],
-        #     "model": "llama-3.1-8b-instant",
-        #     "temperature": 0.1,
-        #     "max_tokens": 1024
-        # }
-        # 
-        # # Use httpx for async HTTP requests
-        # client = httpx.AsyncClient(timeout=30.0)
-        # try:
-        #     response = await client.post(
-        #         "https://api.groq.com/openai/v1/chat/completions",
-        #         headers=headers,
-        #         json=payload
-        #     )
-        #     
-        #     if response.status_code != 200:
-        #         raise HTTPException(
-        #             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-        #             detail=f"Error from Groq API: {response.text}"
-        #         )
-        #     
-        #     # Extract response content
-        #     response_data = response.json()
-        #     ai_response = response_data["choices"][0]["message"]["content"]
-        #     
-        #     return {"response": ai_response}
-        # finally:
-        #     await client.aclose()
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -248,15 +209,14 @@ async def command_chatbot(
             "Only use supported actions. Always include ISO 8601 date-times. "
             "Respond with ONLY valid JSON, no extra commentary.\n\n"
             "Supported actions and required params: \n"
-            "- create_transaction: {description: str, amount: float, transaction_date: ISO8601, category_name?: str} \n"
+            "- create_transaction: {description: str, amount: float, transaction_date?: ISO8601, category_name?: str} \n"
             "- update_transaction: {id: uuid, description?: str, amount?: float, transaction_date?: ISO8601, category_name?: str} \n"
             "- delete_transaction: {id: uuid} \n"
-            "- create_category: {name: str, description?: str} \n"
-            "- update_category: {id: uuid, name?: str, description?: str} \n"
-            "- delete_category: {id: uuid} \n"
             "Rules: Interpret relative dates (e.g., 'yesterday', 'today') using the provided current datetime. "
             "If the command references 'last transaction' or similar, select an actual id from provided recent transactions. "
-            "Never use placeholder values like <uuid>; always return concrete ids and dates."
+            "If no date is provided, set transaction_date to the provided current datetime. "
+            "Never propose category create/update/delete actions. "
+            "Descriptions should be short and meaningful (e.g., 'Lunch', 'Groceries', 'Fuel'), not the full user command."
         )
 
         user_prompt = (
@@ -353,6 +313,54 @@ def _normalize_to_naive_utc(dt: datetime) -> datetime:
     return dt
 
 
+_COMMANDY_WORDS = {"add", "update", "delete", "transaction", "category", "to", "for", "rs", "rupees"}
+_DESCRIPTION_KEYWORDS = [
+    "lunch", "dinner", "breakfast", "snacks", "grocery", "groceries", "fuel", "petrol", "diesel",
+    "movie", "rent", "electricity", "bill", "gas", "internet", "recharge", "shopping", "pharmacy",
+    "medicine", "doctor", "gym", "travel", "ticket", "bus", "train", "flight", "coffee", "tea",
+]
+
+
+def _refine_description(original_command: str, provided: str | None, category_name: str | None) -> str:
+    if provided:
+        cleaned = provided.strip()
+        low = cleaned.lower()
+        # If description looks like the original command or contains commandy words, replace it
+        if low == original_command.strip().lower() or any(w in low for w in _COMMANDY_WORDS):
+            provided = None
+        else:
+            return cleaned
+    # Try to pick a meaningful keyword from the command
+    cmd_low = original_command.lower()
+    for kw in _DESCRIPTION_KEYWORDS:
+        if kw in cmd_low:
+            return kw.title()
+    # Fallbacks
+    if category_name:
+        return f"{category_name} expense"
+    return "Expense"
+
+
+async def _resolve_category_name_from_command(command: str, db: AsyncSession, user_id: uuid.UUID) -> str | None:
+    """Try to resolve a category by fuzzy matching words in the command to user's categories."""
+    user_cats = await get_categories_for_user(user_id, db)
+    if not user_cats:
+        return None
+    names = [c.name for c in user_cats]
+    words = [w for w in re.findall(r"[a-zA-Z]+", command) if len(w) >= 3]
+    # Try exact ignore-case
+    for w in words:
+        for n in names:
+            if n.lower() == w.lower():
+                return n
+    # Fuzzy
+    for w in words:
+        match = difflib.get_close_matches(w, names, n=1, cutoff=0.85)
+        if match:
+            return match[0]
+    return None
+
+
 def _date_from_relative(original_command: str, now_local: datetime) -> datetime | None:
     cmd = original_command.lower()
     if "yesterday" in cmd:
@@ -374,32 +382,41 @@ async def _execute_action(action: ChatCommandAction, user: User, db: AsyncSessio
             from app.crud.category import get_category_by_name_for_user, create_category_for_user
             from app.schemas.category import CategoryCreate
             params = action.params
-            description = params.get("description")
+            provided_description = params.get("description")
             amount = _clean_amount(params.get("amount"))
             transaction_date_str = params.get("transaction_date")
             category_name = params.get("category_name")
-            if not description or amount is None or not transaction_date_str:
-                return ExecutedActionResult(type=action.type, status="error", message="Missing required params: description, amount, transaction_date")
+            if amount is None:
+                return ExecutedActionResult(type=action.type, status="error", message="Missing or invalid amount")
+            # Date handling: default to now if not specified; allow relative words
             try:
-                # Prefer relative interpretation if present in the command
                 rel = _date_from_relative(original_command, now_local)
-                if rel is not None:
-                    transaction_date = _normalize_to_naive_utc(rel)
+                if transaction_date_str:
+                    try:
+                        dt = datetime.fromisoformat(transaction_date_str)
+                        transaction_date = _normalize_to_naive_utc(dt)
+                    except Exception:
+                        transaction_date = _normalize_to_naive_utc(rel or now_local)
                 else:
-                    transaction_date = datetime.fromisoformat(transaction_date_str)
-                    transaction_date = _normalize_to_naive_utc(transaction_date)
+                    transaction_date = _normalize_to_naive_utc(rel or now_local)
             except Exception:
-                return ExecutedActionResult(type=action.type, status="error", message="transaction_date must be ISO 8601")
-
+                transaction_date = _normalize_to_naive_utc(now_local)
+            # Category resolution if missing
+            if not category_name:
+                category_name = await _resolve_category_name_from_command(original_command, db, user_id)
+            # Ensure category exists or create if referenced
             category_id = None
             if category_name:
                 existing = await get_category_by_name_for_user(category_name, user_id, db)
                 if existing is None:
                     new_cat = await create_category_for_user(user_id, CategoryCreate(name=category_name, description=None, default_percentage=0.0, custom_percentage=None, is_default=False, is_fixed=False), db)
                     category_id = new_cat.id
+                    category_name = new_cat.name
                 else:
                     category_id = existing.id
-
+                    category_name = existing.name
+            # Refine description
+            description = _refine_description(original_command, provided_description, category_name)
             tx = await create_transaction_for_user(user_id, TransactionCreate(description=description, amount=amount, category_id=category_id, transaction_date=transaction_date), db)
             return ExecutedActionResult(type=action.type, status="success", message="Transaction created", data={"transaction_id": str(tx.id)})
 
@@ -439,7 +456,7 @@ async def _execute_action(action: ChatCommandAction, user: User, db: AsyncSessio
                 return ExecutedActionResult(type=action.type, status="error", message="Transaction not found")
             update_payload = {}
             if "description" in params:
-                update_payload["description"] = params["description"]
+                update_payload["description"] = _refine_description(original_command, params["description"], params.get("category_name"))
             if "amount" in params:
                 update_payload["amount"] = _clean_amount(params["amount"])
             if "transaction_date" in params:
@@ -447,7 +464,10 @@ async def _execute_action(action: ChatCommandAction, user: User, db: AsyncSessio
                 if isinstance(params["transaction_date"], str) and params["transaction_date"].startswith("<"):
                     dt = _date_from_relative(original_command, now_local) or now_local
                 else:
-                    dt = datetime.fromisoformat(params["transaction_date"])  # may raise
+                    try:
+                        dt = datetime.fromisoformat(params["transaction_date"])  # may raise
+                    except Exception:
+                        dt = _date_from_relative(original_command, now_local) or now_local
                 dt = _normalize_to_naive_utc(dt)
             if "category_name" in params and params["category_name"]:
                 from app.crud.category import get_category_by_name_for_user, create_category_for_user
@@ -483,68 +503,9 @@ async def _execute_action(action: ChatCommandAction, user: User, db: AsyncSessio
             await delete_transaction(tx, db)
             return ExecutedActionResult(type=action.type, status="success", message="Transaction deleted", data={"transaction_id": str(tx.id)})
 
-        elif action.type == "create_category":
-            from app.schemas.category import CategoryCreate
-            from app.crud.category import create_category_for_user, get_category_by_name_for_user
-            params = action.params
-            name = params.get("name")
-            description = params.get("description")
-            if not name:
-                return ExecutedActionResult(type=action.type, status="error", message="Missing name")
-            existing = await get_category_by_name_for_user(name, user_id, db)
-            if existing:
-                return ExecutedActionResult(type=action.type, status="success", message="Category already exists", data={"category_id": str(existing.id)})
-            cat = await create_category_for_user(user_id, CategoryCreate(name=name, description=description, default_percentage=0.0, custom_percentage=None, is_default=False, is_fixed=False), db)
-            return ExecutedActionResult(type=action.type, status="success", message="Category created", data={"category_id": str(cat.id)})
-
-        elif action.type == "update_category":
-            from app.crud.category import get_category_by_id, update_category, get_category_by_name_for_user, get_categories_for_user
-            from app.schemas.category import CategoryUpdate
-            params = action.params
-            cat_id_raw = params.get("id")
-            cat = None
-            # Try by ID first if provided and non-placeholder
-            if cat_id_raw and isinstance(cat_id_raw, str) and not cat_id_raw.startswith("<"):
-                try:
-                    cat_uuid = uuid.UUID(str(cat_id_raw))
-                    cat = await get_category_by_id(cat_uuid, user_id, db)
-                except Exception:
-                    cat = None
-            # Fallback: try by name if provided
-            if cat is None:
-                desired_name = params.get("name")
-                if desired_name:
-                    cat = await get_category_by_name_for_user(desired_name, user_id, db)
-            # Fuzzy fallback: pick closest existing category by name
-            if cat is None:
-                user_cats = await get_categories_for_user(user_id, db)
-                names = [c.name for c in user_cats]
-                desired_name = params.get("name") or ""
-                if names and desired_name:
-                    match = difflib.get_close_matches(desired_name, names, n=1, cutoff=0.6)
-                    if match:
-                        # Fetch again by name to get entity
-                        cat = await get_category_by_name_for_user(match[0], user_id, db)
-            if cat is None:
-                return ExecutedActionResult(type=action.type, status="error", message="Category not found")
-            update_obj = CategoryUpdate(
-                name=params.get("name"),
-                description=params.get("description"),
-            )
-            cat_updated = await update_category(cat, update_obj, db)
-            return ExecutedActionResult(type=action.type, status="success", message="Category updated", data={"category_id": str(cat_updated.id)})
-
-        elif action.type == "delete_category":
-            from app.crud.category import get_category_by_id, delete_category
-            params = action.params
-            cat_id = params.get("id")
-            if not cat_id:
-                return ExecutedActionResult(type=action.type, status="error", message="Missing id")
-            cat = await get_category_by_id(uuid.UUID(str(cat_id)), user_id, db)
-            if cat is None:
-                return ExecutedActionResult(type=action.type, status="error", message="Category not found")
-            await delete_category(cat, db)
-            return ExecutedActionResult(type=action.type, status="success", message="Category deleted", data={"category_id": str(cat.id)})
+        # Disallow any category actions from command chatbot
+        elif action.type in {"create_category", "update_category", "delete_category"}:
+            return ExecutedActionResult(type=action.type, status="error", message="Category actions are not supported in command chatbot")
 
         return ExecutedActionResult(type=action.type, status="error", message="Unsupported action type")
     except Exception as e:
@@ -610,7 +571,7 @@ async def prepare_user_data(user: User, db: AsyncSession) -> dict:
         # Skip transactions without dates
         if tx.transaction_date is None:
             continue
-            
+        
         tx_date = tx.transaction_date
         tx_amount = safe_float(tx.amount)
         
