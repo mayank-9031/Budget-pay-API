@@ -11,7 +11,6 @@ from app.crud.category import (
     get_category_by_id,
     update_category,
     delete_category,
-    seed_default_categories_for_user,
 )
 from app.core.database import get_async_session
 from app.core.auth import User
@@ -27,8 +26,7 @@ async def read_categories(
 ):
     # Convert user.id to UUID
     user_id = uuid.UUID(str(user.id))
-    # Ensure default categories exist
-    await seed_default_categories_for_user(user_id, db)
+    # Simply return categories; defaults are seeded at user creation time
     categories = await get_categories_for_user(user_id, db)
     return categories
 
